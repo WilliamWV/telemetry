@@ -14,6 +14,186 @@ import p4runtime_lib.bmv2
 from p4runtime_lib.switch import ShutdownAllSwitchConnections
 import p4runtime_lib.helper
 
+SWITCH = 0
+HOST = 1
+
+CURRENT_DEVICE_ID = 0
+BASE_PORT = 50051
+FORWARD_TABLE_NAME = 'MyIngress.ipv4_lpm'
+FORWARD_MATCH_FIELD = 'hdr.ipv4.dstAddr'
+FORWARD_ACTION = 'MyIngress.ipv4_forward'
+BITS_PER_SWITCH = 8 # number of bits to identify a host on a switch
+
+class Link:
+    def __init__(self, node1, node2):
+        self.node1 = node1
+        self.node2 = node2
+
+class Node:
+    def __init__(self, name, node_type):
+        self.type = node_type
+        self.name = name
+        # name is 'sxx' for a switch or 'hxx' for a host where xx is a number
+
+class Host(Node):
+    def __init__(self, name, ipv4):
+        global HOST
+        Node.__init__(self, name, HOST)
+        self.ipv4 = ipv4
+    def get_IPv4(self):
+        return self.ipv4
+
+class Switch(Node):
+    def __init__(self, name, p4info_helper):
+        global SWITCH
+        Node.__init__(self, name, SWITCH)
+        self.p4info_helper = p4info_helper
+        self.init_switch()
+        
+    def install_swtrace_rule(self):
+
+        # installing swtrace rule
+        table_entry = self.p4info_helper.buildTableEntry(
+            table_name='MyEgress.swtrace',
+            default_action=True,
+            action_name='MyEgress.add_swtrace',
+            action_params={'swid': int(self.name[1:])}
+        )
+        self.switch.WriteTableEntry(table_entry)
+
+
+    def get_IPv4(self):
+        return '10.0.%02x.0' % (int(self.name[1:])) # IPv4 table match
+
+
+    def init_switch(self):
+        global CURRENT_DEVICE_ID, BASE_PORT
+        self.switch = p4runtime_lib.bmv2.Bmv2SwitchConnection(
+            name=self.name,
+            address='127.0.0.1:'+str(BASE_PORT + CURRENT_DEVICE_ID),
+            device_id=CURRENT_DEVICE_ID,
+            proto_dump_file='logs/'+str(self.name)+'-p4runtime-requests.txt')
+        CURRENT_DEVICE_ID += 1
+        
+        # Send master arbitration update message to establish this controller as
+        # master (required by P4Runtime before performing any other write operation)
+        self.switch.MasterArbitrationUpdate()
+
+        
+    def add_rule(self, rule):
+        global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
+        table_entry = self.p4info_helper.buildTableEntry(
+            table_name=FORWARD_TABLE_NAME,
+            match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
+            action_name=FORWARD_ACTION,
+            action_params={'dstAddr': rule['dstAddr'], 'port': rule['port']}   
+        )
+        self.switch.WriteTableEntry(table_entry)
+
+    def get_switch(self):
+        return self.switch
+
+
+class Topology:
+    # represents topology nodes
+
+    def __init__(self):
+        self.nodes = {}
+        self.links = []
+
+    def add_node(self, node):
+        self.nodes[node.name] = node
+
+    
+    def make_rule(self, n1, n2, port):
+        global SWITCH, HOST
+        n1_num = int(n1.name[1:])
+        n2_num = int(n2.name[1:])
+
+        if n2.type == SWITCH:
+            return {
+                'match_field' : (n2.get_IPv4(), 24), 
+                'dstAddr': '00:00:00:%02x:%02x:00' % (n2_num, n2_num),
+                'port' : port
+            }    
+        elif n2.type == HOST:
+            return {
+                'match_field' : (n2.get_IPv4(), 32), 
+                'dstAddr': '00:00:00:00:%02x:%02x' % (n1_num, n2_num),
+                'port' : port
+            }
+
+    def has_link(self, node1, node2):
+        for link in self.links:
+            if (link[0] == node1 and link[1] == node2):
+                return True
+        return False
+
+
+    def add_link(self, node1, node2, port):
+        global SWITCH, HOST
+
+        if node1 not in self.nodes or node2 not in self.nodes:
+            raise Exception("Both nodes must be added to the topology before adding links to them")
+        n1 = self.nodes[node1]
+        n2 = self.nodes[node2]
+
+        if n1.type == HOST and n2.type == HOST:
+            raise Exception("A host must not be connected to another host, attempted with host " + node1 + " and " + node2)
+        
+        if n1.type == SWITCH:
+            rule = self.make_rule(n1, n2, port)
+            n1.add_rule(rule)
+            self.links.append((node1, node2, rule))
+        
+    #returns a dictionary associating each switch to the rule that represents the next hop
+    #from the argument sw to this switch 
+    def get_next_hop_for_all_sw (self, sw):
+        global SWITCH
+        answer = {}
+        switches = [s for s in self.nodes if self.nodes[s].type == SWITCH and s != sw]
+        
+        next_hop =  {s : None for s in switches} # will contains the next hop for all switches
+        
+        queue = [sw]
+        
+        while len(queue) > 0:
+            current = queue[0]
+            queue = queue[1:]
+
+            current_links = [l for l in self.links if l[0] == current]
+            for link in current_links:
+                other_sw = link[1] 
+                if other_sw != sw and self.nodes[other_sw].type == SWITCH and next_hop[other_sw] == None:
+                    if current == sw:
+                        next_hop[other_sw] = link[2]
+                    else:
+                        next_hop[other_sw] = next_hop[current]
+                    queue.append(other_sw)
+
+        return next_hop
+        
+
+    def adjust_rule(self, rule, sw):
+        return {
+                'match_field' : (sw.get_IPv4(), 24), 
+                'dstAddr': rule['dstAddr'],
+                'port' : rule['port']
+            }    
+
+    # create entries on tables switches to represent each switch that are not connected with it so that they can route to each other
+    def fill_switch_tables(self):
+        global SWITCH
+        switches = [self.nodes[s] for s in self.nodes if self.nodes[s].type == SWITCH]
+        for s1 in range(len(switches) - 1):
+            next_hops = self.get_next_hop_for_all_sw(switches[s1].name)
+            for s2 in range(s1+1, len(switches)):
+                if not self.has_link(switches[s1].name, switches[s2].name):
+                    print ("Not found link between " + switches[s1].name + " and " + switches[s2].name)
+                    switches[s1].add_rule(self.adjust_rule(next_hops[switches[s2].name], switches[s2]))
+
+
+
 
 def installIPv4Rules(p4info_helper, switches):
     # IPv4 Rules for Switch S1
@@ -43,7 +223,7 @@ def installIPv4Rules(p4info_helper, switches):
         table_name='MyIngress.ipv4_lpm',
         match_fields={'hdr.ipv4.dstAddr': ('10.0.2.0', 24)},
         action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:02:03:00', 'port': 3}
+        action_params={'dstAddr': '00:00:00:02:02:00', 'port': 3}
     )
     switches[0].WriteTableEntry(table_entry)
 
@@ -52,7 +232,7 @@ def installIPv4Rules(p4info_helper, switches):
         table_name='MyIngress.ipv4_lpm',
         match_fields={'hdr.ipv4.dstAddr': ('10.0.3.0', 24)},
         action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:03:02:00', 'port': 4}
+        action_params={'dstAddr': '00:00:00:03:03:00', 'port': 4}
     )
     switches[0].WriteTableEntry(table_entry)
 
@@ -71,7 +251,7 @@ def installIPv4Rules(p4info_helper, switches):
         table_name='MyIngress.ipv4_lpm',
         match_fields={'hdr.ipv4.dstAddr': ('10.0.1.0', 24)},
         action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:01:03:00', 'port': 3}
+        action_params={'dstAddr': '00:00:00:01:01:00', 'port': 3}
     )
     switches[1].WriteTableEntry(table_entry)
     # S2 -> H2
@@ -118,7 +298,7 @@ def installIPv4Rules(p4info_helper, switches):
         table_name='MyIngress.ipv4_lpm',
         match_fields={'hdr.ipv4.dstAddr': ('10.0.1.0', 24)},
         action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:01:04:00', 'port': 2}
+        action_params={'dstAddr': '00:00:00:01:01:00', 'port': 2}
     )
     switches[2].WriteTableEntry(table_entry)
 
@@ -127,7 +307,7 @@ def installIPv4Rules(p4info_helper, switches):
         table_name='MyIngress.ipv4_lpm',
         match_fields={'hdr.ipv4.dstAddr': ('10.0.2.0', 24)},
         action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:02:04:00', 'port': 3}
+        action_params={'dstAddr': '00:00:00:02:02:00', 'port': 3}
     )
     switches[2].WriteTableEntry(table_entry)
 
@@ -196,7 +376,7 @@ def main(p4info_file_path, bmv2_file_path):
         # Create a switch connection object for s1 and s2;
         # this is backed by a P4Runtime gRPC connection.
         # Also, dump all P4Runtime messages sent to switch to given txt files.
-        s1 = p4runtime_lib.bmv2.Bmv2SwitchConnection(
+        '''s1 = p4runtime_lib.bmv2.Bmv2SwitchConnection(
             name='s1',
             address='127.0.0.1:50051',
             device_id=0,
@@ -217,24 +397,46 @@ def main(p4info_file_path, bmv2_file_path):
         s1.MasterArbitrationUpdate()
         s2.MasterArbitrationUpdate()
         s3.MasterArbitrationUpdate()
+        '''
+        s1 = Switch('s1', p4info_helper)
+        s2 = Switch('s2', p4info_helper)
+        s3 = Switch('s3', p4info_helper)
 
         switches = [s1, s2, s3]
 
+
+        h1 = Host('h1', '10.0.1.1')
+        h11 = Host('h11', '10.0.1.11')
+        h2 = Host('h2', '10.0.2.2')
+        h22 = Host('h22', '10.0.2.22')
+        h3 = Host('h3', '10.0.3.3')
+
+        topo = Topology()
+        topo.add_node(s1)
+        topo.add_node(s2)
+        topo.add_node(s3)
+        topo.add_node(h1)
+        topo.add_node(h11)
+        topo.add_node(h2)
+        topo.add_node(h22)
+        topo.add_node(h3)
+        
         # PHASE 1: INSTALL THE P4 PROGRAM ON THE SWITCHES
         print '####################'
         print '# Starting Phase 1 #'
         print '####################'
-        s1.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
+        s1.get_switch().SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                        bmv2_json_file_path=bmv2_file_path)
         print "Installed P4 Program using SetForwardingPipelineConfig on s1"
-        s2.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
+        s2.get_switch().SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                        bmv2_json_file_path=bmv2_file_path)
         print "Installed P4 Program using SetForwardingPipelineConfig on s2"
-        s3.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
+        s3.get_switch().SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                        bmv2_json_file_path=bmv2_file_path)
         print "Installed P4 Program using SetForwardingPipelineConfig on s3"
 
-        readTableRulesFromSwitches(p4info_helper, switches)
+        sw_obj = [s.get_switch() for s in switches]
+        readTableRulesFromSwitches(p4info_helper, sw_obj)
 
         print 'Phase 1 finished, press [ENTER] to continue.'
         raw_input()
@@ -244,9 +446,28 @@ def main(p4info_file_path, bmv2_file_path):
         print '# Starting Phase 2 #'
         print '####################'
 
-        installIPv4Rules(p4info_helper, switches)
+        topo.add_link('s1', 'h1', 2)
+        topo.add_link('s1', 'h11', 1)
+        topo.add_link('s1', 's2', 3)
+        topo.add_link('s1', 's3', 4)
+
+        topo.add_link('s2', 'h2', 2)
+        topo.add_link('s2', 'h22', 1)
+        topo.add_link('s2', 's1', 3)
+        topo.add_link('s2', 's3', 4)
+
+        topo.add_link('s3', 'h3', 1)
+        topo.add_link('s3', 's1', 2)
+        topo.add_link('s3', 's2', 3)
+
+        topo.fill_switch_tables()
+
+        for s in switches:
+            s.install_swtrace_rule()
+
+        #installIPv4Rules(p4info_helper, switches)
         print 'Finished InstallIPv4Rules'
-        readTableRulesFromSwitches(p4info_helper, switches)
+        readTableRulesFromSwitches(p4info_helper, sw_obj)
 
         print 'Phase 2 finished, press [ENTER] to continue.'
         raw_input()
