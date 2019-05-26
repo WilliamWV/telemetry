@@ -14,46 +14,103 @@ import p4runtime_lib.bmv2
 from p4runtime_lib.switch import ShutdownAllSwitchConnections
 import p4runtime_lib.helper
 
-#TODO: add documentation
+###############################################################################
+#######################        CONSTANTS        ###############################
+###############################################################################
+
+# Constants to identify the type of an instance of class Node in Topology
 SWITCH = 0
 HOST = 1
 
+# Incremental counter to identify the device, used to initialize a behavioral 
+# model to a switch
 CURRENT_DEVICE_ID = 0
+
+# Base port where each switch is connected, the real port is obtained by the 
+# sum of this value with
 BASE_PORT = 50051
+
+# Constants used when creating forwarding rules
 FORWARD_TABLE_NAME = 'MyIngress.ipv4_lpm'
 FORWARD_MATCH_FIELD = 'hdr.ipv4.dstAddr'
 FORWARD_ACTION = 'MyIngress.ipv4_forward'
 BITS_PER_SWITCH = 8 # number of bits to identify a host on a switch
 
-class Link:
-    def __init__(self, node1, node2):
-        self.node1 = node1
-        self.node2 = node2
 
+
+###############################################################################
+### class Node                                                              ###
+###  * Used to represent a node on the network topology, eventually it will ###
+###    be specialized to either a Host or a Switch.                         ###
+###  * Contain basic and general information like the node name represented ###
+###    by a string and its type to differ between switch and host.          ###
+###  * Structure:                                                           ###
+###    - self.type                                                          ###
+###    - self.name                                                          ###
+###############################################################################
 class Node:
     def __init__(self, name, node_type):
         self.type = node_type
         self.name = name
         # name is 'sxx' for a switch or 'hxx' for a host where xx is a number
 
+
+
+###############################################################################
+### class Host                                                              ###
+###  * Represents a host on the topology, beyond the content of its Node,   ###
+###    this class also represents the Host IPv4 address                     ###
+###  * Structure:                                                           ###
+###    - self.type                                                          ###
+###    - self.name                                                          ###
+###    - self.ipv4                                                          ###
+###  * Methods:                                                             ###
+###    - __init__(name, ipv4)                                               ###
+###    - get_IPv4()                                                         ###
+###############################################################################
 class Host(Node):
     def __init__(self, name, ipv4):
         global HOST
         Node.__init__(self, name, HOST)
         self.ipv4 = ipv4
+
+
     def get_IPv4(self):
         return self.ipv4
 
+
+
+###############################################################################
+### class Switch                                                            ###
+###  * Represents a switch on the topology, this class is used to install   ###
+###    rules on the table switch, including rules related to forwarding and ###
+###    to telemetry.                                                        ###
+###  * Structure:                                                           ###
+###    - self.type                                                          ###
+###    - self.name                                                          ###
+###    - self.p4info_helper // used to build table entries                  ###
+###    - self.switch        // represents an object of                      ###
+###                         // p4runtime_lib.bmv2.Bmv2SwitchConnection      ###
+###  * Methods:                                                             ###
+###    - __init__ (name, p4info_helper, bmv2_file_path)                     ###
+###    - install_telemetry_rule()                                           ###
+###    - get_IPv4 ()                                                        ###
+###    - init_switch ()    // self.switch object                            ###
+###    - add_rule(rule)    // forwarding rule                               ###
+###    - get_switch()      // self.switch                                   ###
+###############################################################################
 class Switch(Node):
-    def __init__(self, name, p4info_helper):
+    def __init__(self, name, p4info_helper, bmv2_file_path):
         global SWITCH
         Node.__init__(self, name, SWITCH)
         self.p4info_helper = p4info_helper
         self.init_switch()
+        self.switch.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
+                                       bmv2_json_file_path=bmv2_file_path)
+        self.install_telemetry_rule()
         
-    def install_swtrace_rule(self):
 
-        # installing swtrace rule
+    def install_telemetry_rule(self):
         table_entry = self.p4info_helper.buildTableEntry(
             table_name='MyEgress.swtrace',
             default_action=True,
@@ -75,12 +132,17 @@ class Switch(Node):
             device_id=CURRENT_DEVICE_ID,
             proto_dump_file='logs/'+str(self.name)+'-p4runtime-requests.txt')
         CURRENT_DEVICE_ID += 1
-        
         # Send master arbitration update message to establish this controller as
         # master (required by P4Runtime before performing any other write operation)
         self.switch.MasterArbitrationUpdate()
 
-        
+    
+    # A rule is a dictionary defined as:
+    # rule {
+    #   'dstAddr'     : mac address to forward
+    #   'port'        : port to froward
+    #   'match_field' : tuple of (ipv4 to match, size to match)
+    #}
     def add_rule(self, rule):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
         table_entry = self.p4info_helper.buildTableEntry(
@@ -91,10 +153,32 @@ class Switch(Node):
         )
         self.switch.WriteTableEntry(table_entry)
 
+
+
     def get_switch(self):
         return self.switch
 
 
+
+###############################################################################
+### class Topology                                                          ###
+###  * Represents a global view of the network topology.                    ###
+###  * Used to add nodes and links to the network, create rules to be       ###
+###    installed on switch tables and determine the next hop between        ###
+###    distant switches to reduce the number of hops.                       ###
+###  * Structure:                                                           ###
+###    - self.nodes         // dictionary {node_name -> node}               ###
+###    - self.links         // list of tuples (src, dst, fw_rule)           ###
+###  * Methods:                                                             ###
+###    - __init__ ()                                                        ###
+###    - add_node (node)                                                    ###
+###    - make_rule (n1, n2, port)                                           ###
+###    - has_link (node1, node2)                                            ###
+###    - add_link(node1, node2, port)                                       ###
+###    - get_next_hop_for_all_sw(sw)                                        ###
+###    - adjust_rule(rule, sw)                                              ###
+###    - fill_switch_tables()                                               ###
+###############################################################################
 class Topology:
     # represents topology nodes
 
@@ -174,7 +258,8 @@ class Topology:
 
         return next_hop
         
-
+    # Modify an existing rule changing the match fields to map for other switch to the same
+    # forwarding address and port
     def adjust_rule(self, rule, sw):
         return {
                 'match_field' : (sw.get_IPv4(), 24), 
@@ -194,6 +279,10 @@ class Topology:
                     switches[s1].add_rule(self.adjust_rule(next_hops[switches[s2].name], switches[s2]))
 
 
+
+###############################################################################
+#####################          GENERAL FUNCTIONS          #####################
+###############################################################################  
 
 def readTableRules(p4info_helper, sw):
     """
@@ -231,9 +320,13 @@ def main(p4info_file_path, bmv2_file_path):
     p4info_helper = p4runtime_lib.helper.P4InfoHelper(p4info_file_path)
 
     try:
-        s1 = Switch('s1', p4info_helper)
-        s2 = Switch('s2', p4info_helper)
-        s3 = Switch('s3', p4info_helper)
+        print '####################'
+        print '# Starting Phase 1 #'
+        print '####################'
+        
+        s1 = Switch('s1', p4info_helper, bmv2_file_path)
+        s2 = Switch('s2', p4info_helper, bmv2_file_path)
+        s3 = Switch('s3', p4info_helper, bmv2_file_path)
 
         switches = [s1, s2, s3]
 
@@ -255,20 +348,7 @@ def main(p4info_file_path, bmv2_file_path):
         topo.add_node(h3)
         
         # PHASE 1: INSTALL THE P4 PROGRAM ON THE SWITCHES
-        # TODO: transferir essa parte para dentro dos switches  
-        print '####################'
-        print '# Starting Phase 1 #'
-        print '####################'
-        s1.get_switch().SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
-                                       bmv2_json_file_path=bmv2_file_path)
-        print "Installed P4 Program using SetForwardingPipelineConfig on s1"
-        s2.get_switch().SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
-                                       bmv2_json_file_path=bmv2_file_path)
-        print "Installed P4 Program using SetForwardingPipelineConfig on s2"
-        s3.get_switch().SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
-                                       bmv2_json_file_path=bmv2_file_path)
-        print "Installed P4 Program using SetForwardingPipelineConfig on s3"
-
+        
         sw_obj = [s.get_switch() for s in switches]
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
@@ -296,9 +376,6 @@ def main(p4info_file_path, bmv2_file_path):
 
         topo.fill_switch_tables()
 
-        # TODO: realizar isso automaticamente dentro dos switches
-        for s in switches:
-            s.install_swtrace_rule()
 
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
