@@ -14,6 +14,7 @@ import p4runtime_lib.bmv2
 from p4runtime_lib.switch import ShutdownAllSwitchConnections
 import p4runtime_lib.helper
 
+#TODO: add documentation
 SWITCH = 0
 HOST = 1
 
@@ -194,141 +195,6 @@ class Topology:
 
 
 
-
-def installIPv4Rules(p4info_helper, switches):
-    # IPv4 Rules for Switch S1
-    print 'Entering installIPv4Rules'
-    # S1 -> H1
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.1.1', 32)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:00:01:01', 'port': 2}
-    )
-    print 'Defined entry S1 -> H1'
-    switches[0].WriteTableEntry(table_entry)
-
-    print 'Entering installed rule S1 -> H1'
-    
-    # S1 -> H11
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.1.11', 32)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:00:01:0b', 'port': 1}   
-    )
-    switches[0].WriteTableEntry(table_entry)
-    # S1 -> S2
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.2.0', 24)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:02:02:00', 'port': 3}
-    )
-    switches[0].WriteTableEntry(table_entry)
-
-    # S1 -> S3
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.3.0', 24)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:03:03:00', 'port': 4}
-    )
-    switches[0].WriteTableEntry(table_entry)
-
-    # S1 : SWTRACE
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyEgress.swtrace',
-        default_action=True,
-        action_name='MyEgress.add_swtrace',
-        action_params={'swid': 1}
-    )
-    switches[0].WriteTableEntry(table_entry)
-
-    # IPv4 Rules for Switch S2
-    # S2 -> S1
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.1.0', 24)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:01:01:00', 'port': 3}
-    )
-    switches[1].WriteTableEntry(table_entry)
-    # S2 -> H2
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.2.2', 32)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:00:02:02', 'port': 2}
-    )
-
-    switches[1].WriteTableEntry(table_entry)
-
-    # S2 -> H22
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.2.22', 32)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:00:02:16', 'port': 1}
-    )
-
-    switches[1].WriteTableEntry(table_entry)
-    
-    # S2 -> S3
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.3.0', 24)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:03:03:00', 'port': 4}
-    )
-    switches[1].WriteTableEntry(table_entry)
-
-    # S2 : SWTRACE
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyEgress.swtrace',
-        default_action=True,
-        action_name='MyEgress.add_swtrace',
-        action_params={'swid': 2}
-    )
-    switches[1].WriteTableEntry(table_entry)
-
-    # IPv4 Rules for Switch S3
-    # S3 -> S1
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.1.0', 24)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:01:01:00', 'port': 2}
-    )
-    switches[2].WriteTableEntry(table_entry)
-
-    # S3 -> S2
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.2.0', 24)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:02:02:00', 'port': 3}
-    )
-    switches[2].WriteTableEntry(table_entry)
-
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyIngress.ipv4_lpm',
-        match_fields={'hdr.ipv4.dstAddr': ('10.0.3.3', 32)},
-        action_name='MyIngress.ipv4_forward',
-        action_params={'dstAddr': '00:00:00:00:03:03', 'port': 1}
-    )
-    switches[2].WriteTableEntry(table_entry)
-
-    # S1 : SWTRACE
-    table_entry = p4info_helper.buildTableEntry(
-        table_name='MyEgress.swtrace',
-        default_action=True,
-        action_name='MyEgress.add_swtrace',
-        action_params={'swid': 3}
-    )
-    switches[2].WriteTableEntry(table_entry)
-
-
 def readTableRules(p4info_helper, sw):
     """
     Reads the table entries from all tables on the switch.
@@ -360,44 +226,11 @@ def readTableRulesFromSwitches(p4info_helper, switches):
         print "-----"
 
 
-def printGrpcError(e):
-    print "gRPC Error:", e.details(),
-    status_code = e.code()
-    print "(%s)" % status_code.name,
-    traceback = sys.exc_info()[2]
-    print "[%s:%d]" % (traceback.tb_frame.f_code.co_filename, traceback.tb_lineno)
-
-
 def main(p4info_file_path, bmv2_file_path):
     # Instantiate a P4Runtime helper from the p4info file
     p4info_helper = p4runtime_lib.helper.P4InfoHelper(p4info_file_path)
 
     try:
-        # Create a switch connection object for s1 and s2;
-        # this is backed by a P4Runtime gRPC connection.
-        # Also, dump all P4Runtime messages sent to switch to given txt files.
-        '''s1 = p4runtime_lib.bmv2.Bmv2SwitchConnection(
-            name='s1',
-            address='127.0.0.1:50051',
-            device_id=0,
-            proto_dump_file='logs/s1-p4runtime-requests.txt')
-        s2 = p4runtime_lib.bmv2.Bmv2SwitchConnection(
-            name='s2',
-            address='127.0.0.1:50052',
-            device_id=1,
-            proto_dump_file='logs/s2-p4runtime-requests.txt')
-        s3 = p4runtime_lib.bmv2.Bmv2SwitchConnection(
-            name='s3',
-            address='127.0.0.1:50053',
-            device_id=2,
-            proto_dump_file='logs/s3-p4runtime-requests.txt')
-
-        # Send master arbitration update message to establish this controller as
-        # master (required by P4Runtime before performing any other write operation)
-        s1.MasterArbitrationUpdate()
-        s2.MasterArbitrationUpdate()
-        s3.MasterArbitrationUpdate()
-        '''
         s1 = Switch('s1', p4info_helper)
         s2 = Switch('s2', p4info_helper)
         s3 = Switch('s3', p4info_helper)
@@ -422,6 +255,7 @@ def main(p4info_file_path, bmv2_file_path):
         topo.add_node(h3)
         
         # PHASE 1: INSTALL THE P4 PROGRAM ON THE SWITCHES
+        # TODO: transferir essa parte para dentro dos switches  
         print '####################'
         print '# Starting Phase 1 #'
         print '####################'
@@ -462,11 +296,10 @@ def main(p4info_file_path, bmv2_file_path):
 
         topo.fill_switch_tables()
 
+        # TODO: realizar isso automaticamente dentro dos switches
         for s in switches:
             s.install_swtrace_rule()
 
-        #installIPv4Rules(p4info_helper, switches)
-        print 'Finished InstallIPv4Rules'
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
         print 'Phase 2 finished, press [ENTER] to continue.'
@@ -476,8 +309,6 @@ def main(p4info_file_path, bmv2_file_path):
         print 'THE END.'
     except KeyboardInterrupt:
         print " Shutting down."
-    # except grpc.RpcError as e:
-    #     printGrpcError(e)
 
     ShutdownAllSwitchConnections()
 
