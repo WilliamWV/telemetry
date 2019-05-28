@@ -158,10 +158,10 @@ class Switch(Node):
     def print_rule(self, rule):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
         print "Table name: " + FORWARD_TABLE_NAME
-        print "Match Address: " + rule['match_field'][0] + ' \\' + rule['match_field'][1]
+        print "Match Address: " + rule['match_field'][0] + ' \\' + str(rule['match_field'][1])
         print "Action: " + FORWARD_ACTION
         print "Destination MAC: " + rule['dstAddr']
-        print "Destination port: " + rule['port']
+        print "Destination port: " + str(rule['port'])
         print "\n"
 
 
