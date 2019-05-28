@@ -145,6 +145,8 @@ class Switch(Node):
     #}
     def add_rule(self, rule):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
+        print "Installing forward rule on switch " + self.name
+        self.print_rule(rule)
         table_entry = self.p4info_helper.buildTableEntry(
             table_name=FORWARD_TABLE_NAME,
             match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
@@ -152,7 +154,15 @@ class Switch(Node):
             action_params={'dstAddr': rule['dstAddr'], 'port': rule['port']}   
         )
         self.switch.WriteTableEntry(table_entry)
-
+    
+    def print_rule(self, rule):
+        global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
+        print "Table name: " + FORWARD_TABLE_NAME
+        print "Match Address: " + rule['match_field'][0] + ' \\' + rule['match_field'][1]
+        print "Action: " + FORWARD_ACTION
+        print "Destination MAC: " + rule['dstAddr']
+        print "Destination port: " + rule['port']
+        print "\n"
 
 
     def get_switch(self):
@@ -320,10 +330,14 @@ def main(p4info_file_path, bmv2_file_path):
     p4info_helper = p4runtime_lib.helper.P4InfoHelper(p4info_file_path)
 
     try:
-        print '####################'
-        print '# Starting Phase 1 #'
-        print '####################'
-        
+        print '####################################'
+        print '# Controller for In-Band Telemetry #'
+        print '####################################'
+
+        print 'Press [ENTER] to continue.'
+        raw_input()
+
+
         s1 = Switch('s1', p4info_helper, bmv2_file_path)
         s2 = Switch('s2', p4info_helper, bmv2_file_path)
         s3 = Switch('s3', p4info_helper, bmv2_file_path)
@@ -352,14 +366,7 @@ def main(p4info_file_path, bmv2_file_path):
         sw_obj = [s.get_switch() for s in switches]
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
-        print 'Phase 1 finished, press [ENTER] to continue.'
-        raw_input()
-
         # PHASE 2: INSTALL IPv4 FORWARDING RULES ON THE SWITCHES
-        print '####################'
-        print '# Starting Phase 2 #'
-        print '####################'
-
         topo.add_link('s1', 'h1', 2)
         topo.add_link('s1', 'h11', 1)
         topo.add_link('s1', 's2', 3)
@@ -376,12 +383,10 @@ def main(p4info_file_path, bmv2_file_path):
 
         topo.fill_switch_tables()
 
-
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
-        print 'Phase 2 finished, press [ENTER] to continue.'
+        print 'Done, press [ENTER] to continue.'
         raw_input()
-
         ## THE END
         print 'THE END.'
     except KeyboardInterrupt:
