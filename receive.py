@@ -22,7 +22,9 @@ def get_if():
 
 class SwitchTrace(Packet):
     fields_desc = [ IntField("swid", 0),
-                  IntField("qdepth", 0)]
+                  IntField("qdepth", 0),
+                  IntField("timestamp", 0),
+                  IntField("timedelta", 0)]
     def extract_padding(self, p):
                 return "", p
 
@@ -42,7 +44,7 @@ class IPOption_MRI(IPOption):
 def handle_pkt(pkt):
     print "got a packet"
     pkt.show2()
-#    hexdump(pkt)
+    #hexdump(pkt)
     sys.stdout.flush()
 
 

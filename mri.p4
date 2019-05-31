@@ -17,6 +17,8 @@ typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
 typedef bit<32> switchID_t;
 typedef bit<32> qdepth_t;
+typedef bit<32> timestamp_t;
+typedef bit<32> timedelta_t;
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -51,8 +53,12 @@ header mri_t {
 }
 
 header switch_t {
-    switchID_t  swid;
-    qdepth_t    qdepth;
+    switchID_t  swid;           //id do distpositivo
+    qdepth_t    qdepth;         //tamanho da fila
+    timestamp_t timestamp;      //timestamp -> ingresso na fila 
+    timedelta_t timedelta;      //delay do salto
+    //regra de encaminhamento
+    //id da fila
 }
 
 struct ingress_metadata_t {
@@ -200,10 +206,13 @@ control MyEgress(inout headers hdr,
         hdr.swtraces[0].setValid();
         hdr.swtraces[0].swid = swid;
         hdr.swtraces[0].qdepth = (qdepth_t)standard_metadata.deq_qdepth;
+        hdr.swtraces[0].timestamp = (timestamp_t)standard_metadata.enq_timestamp;
+        hdr.swtraces[0].timedelta = (timedelta_t) standard_metadata.deq_timedelta;
 
-        hdr.ipv4.ihl = hdr.ipv4.ihl + 2;
-        hdr.ipv4_option.optionLength = hdr.ipv4_option.optionLength + 8; 
-	hdr.ipv4.totalLen = hdr.ipv4.totalLen + 8;
+
+        hdr.ipv4.ihl = hdr.ipv4.ihl + 4;
+        hdr.ipv4_option.optionLength = hdr.ipv4_option.optionLength + 16; 
+	    hdr.ipv4.totalLen = hdr.ipv4.totalLen + 16;
     }
 
     table swtrace {
