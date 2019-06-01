@@ -36,6 +36,9 @@ FORWARD_MATCH_FIELD = 'hdr.ipv4.dstAddr'
 FORWARD_ACTION = 'MyIngress.ipv4_forward'
 BITS_PER_SWITCH = 8 # number of bits to identify a host on a switch
 
+#file constants
+RULES_DIR = 'rules'
+
 
 
 ###############################################################################
@@ -91,23 +94,30 @@ class Host(Node):
 ###    - self.p4info_helper // used to build table entries                  ###
 ###    - self.switch        // represents an object of                      ###
 ###                         // p4runtime_lib.bmv2.Bmv2SwitchConnection      ###
+###    - self.rules         // forwarding rules of the switch               ###
 ###  * Methods:                                                             ###
 ###    - __init__ (name, p4info_helper, bmv2_file_path)                     ###
 ###    - install_telemetry_rule()                                           ###
 ###    - get_IPv4 ()                                                        ###
-###    - init_switch ()    // self.switch object                            ###
-###    - add_rule(rule)    // forwarding rule                               ###
-###    - get_switch()      // self.switch                                   ###
+###    - init_switch ()             // self.switch object                   ###
+###    - add_rule(rule)             // forwarding rule                      ###
+###    - get_switch()               // self.switch                          ###
+###    - write_rule_on_file(rule)   // writes a rule on a file so that it   ###
+###                                 // can be readed by the statistical     ###
+###                                 // controller                           ###
+###    - clear_rule_file()                                                  ###
 ###############################################################################
 class Switch(Node):
     def __init__(self, name, p4info_helper, bmv2_file_path):
         global SWITCH
         Node.__init__(self, name, SWITCH)
+        self.rules = []
         self.p4info_helper = p4info_helper
         self.init_switch()
         self.switch.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                        bmv2_json_file_path=bmv2_file_path)
         self.install_telemetry_rule()
+        self.clear_rule_file()
         
 
     def install_telemetry_rule(self):
@@ -119,6 +129,12 @@ class Switch(Node):
         )
         self.switch.WriteTableEntry(table_entry)
 
+
+    def clear_rule_file(self):
+        global RULES_DIR
+        file_name = RULES_DIR + self.name
+        file = open(file_name, 'w')
+        file.close()
 
     def get_IPv4(self):
         return '10.0.%02x.0' % (int(self.name[1:])) # IPv4 table match
@@ -142,19 +158,31 @@ class Switch(Node):
     #   'dstAddr'     : mac address to forward
     #   'port'        : port to froward
     #   'match_field' : tuple of (ipv4 to match, size to match)
+    #   'id'          : identifier of the rule to statistical use
     #}
     def add_rule(self, rule):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
         print "Installing forward rule on switch " + self.name
         self.print_rule(rule)
+        rule['id'] = len(self.rules)
+        self.rules.append(rule)
         table_entry = self.p4info_helper.buildTableEntry(
             table_name=FORWARD_TABLE_NAME,
             match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
             action_name=FORWARD_ACTION,
-            action_params={'dstAddr': rule['dstAddr'], 'port': rule['port']}   
+            action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id']}   
         )
+        self.write_rule_on_file(rule)
         self.switch.WriteTableEntry(table_entry)
     
+    def write_rule_on_file(self, rule):
+        global RULES_DIR
+        file_name = RULES_DIR+self.name
+        file = open(file_name, 'a')
+        file.write(str(rule) + '\n')
+        file.close()
+
+
     def print_rule(self, rule):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
         print "Table name: " + FORWARD_TABLE_NAME
@@ -326,6 +354,7 @@ def readTableRulesFromSwitches(p4info_helper, switches):
 
 
 def main(p4info_file_path, bmv2_file_path):
+    global RULES_DIR
     # Instantiate a P4Runtime helper from the p4info file
     p4info_helper = p4runtime_lib.helper.P4InfoHelper(p4info_file_path)
 
@@ -337,7 +366,13 @@ def main(p4info_file_path, bmv2_file_path):
         print 'Press [ENTER] to continue.'
         raw_input()
 
+        try:
+            os.mkdir(RULES_DIR)
+        except OSError, WindowsError:
+            pass
 
+
+        RULES_DIR = RULES_DIR + '/'
         s1 = Switch('s1', p4info_helper, bmv2_file_path)
         s2 = Switch('s2', p4info_helper, bmv2_file_path)
         s3 = Switch('s3', p4info_helper, bmv2_file_path)

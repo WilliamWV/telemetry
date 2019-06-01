@@ -15,10 +15,8 @@ const bit<5>  IPV4_OPTION_MRI = 31;
 typedef bit<9>  egressSpec_t;
 typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
-typedef bit<32> switchID_t;
-typedef bit<32> qdepth_t;
-typedef bit<32> timestamp_t;
-typedef bit<32> timedelta_t;
+typedef bit<32> uint_32;
+typedef bit<16> uint_16;
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -53,16 +51,17 @@ header mri_t {
 }
 
 header switch_t {
-    switchID_t  swid;           //id do distpositivo
-    qdepth_t    qdepth;         //tamanho da fila
-    timestamp_t timestamp;      //timestamp -> ingresso na fila 
-    timedelta_t timedelta;      //delay do salto
-    //regra de encaminhamento
+    uint_16 swid;           //id do distpositivo
+    uint_32 qdepth;         //tamanho da fila
+    uint_32 timestamp;      //timestamp -> ingresso na fila 
+    uint_32 timedelta;      //delay do salto
+    uint_16 rule_id;        //regra de encaminhamento
     //id da fila
 }
 
 struct ingress_metadata_t {
     bit<16>  count;
+    uint_16  rule_id;
 }
 
 struct parser_metadata_t {
@@ -71,7 +70,7 @@ struct parser_metadata_t {
 
 struct metadata {
     ingress_metadata_t   ingress_metadata;
-    parser_metadata_t   parser_metadata;
+    parser_metadata_t    parser_metadata;    
 }
 
 struct headers {
@@ -162,11 +161,12 @@ control MyIngress(inout headers hdr,
         mark_to_drop();
     }
     
-    action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
+    action ipv4_forward(macAddr_t dstAddr, egressSpec_t port, uint_16 ruleId) {
         standard_metadata.egress_spec = port;
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = dstAddr;
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+        meta.ingress_metadata.rule_id = ruleId;
     }
 
     table ipv4_lpm {
@@ -196,7 +196,7 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-    action add_swtrace(switchID_t swid) { 
+    action add_swtrace(uint_16 swid) { 
         hdr.mri.count = hdr.mri.count + 1;
         hdr.swtraces.push_front(1);
         // According to the P4_16 spec, pushed elements are invalid, so we need
@@ -205,10 +205,10 @@ control MyEgress(inout headers hdr,
         // bmv2 conforms with the P4_16 spec.
         hdr.swtraces[0].setValid();
         hdr.swtraces[0].swid = swid;
-        hdr.swtraces[0].qdepth = (qdepth_t)standard_metadata.deq_qdepth;
-        hdr.swtraces[0].timestamp = (timestamp_t)standard_metadata.enq_timestamp;
-        hdr.swtraces[0].timedelta = (timedelta_t) standard_metadata.deq_timedelta;
-
+        hdr.swtraces[0].qdepth = (uint_32)standard_metadata.deq_qdepth;
+        hdr.swtraces[0].timestamp = (uint_32)standard_metadata.enq_timestamp;
+        hdr.swtraces[0].timedelta = (uint_32) standard_metadata.deq_timedelta;
+        hdr.swtraces[0].rule_id = meta.ingress_metadata.rule_id;
 
         hdr.ipv4.ihl = hdr.ipv4.ihl + 4;
         hdr.ipv4_option.optionLength = hdr.ipv4_option.optionLength + 16; 

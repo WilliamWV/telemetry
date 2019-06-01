@@ -21,10 +21,12 @@ def get_if():
     return iface
 
 class SwitchTrace(Packet):
-    fields_desc = [ IntField("swid", 0),
+    fields_desc = [
+                  ShortField("swid", 0),
                   IntField("qdepth", 0),
                   IntField("timestamp", 0),
-                  IntField("timedelta", 0)]
+                  IntField("timedelta", 0),
+                  ShortField("rule_id", 0)]
     def extract_padding(self, p):
                 return "", p
 
