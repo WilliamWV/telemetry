@@ -34,6 +34,7 @@ BASE_PORT = 50051
 FORWARD_TABLE_NAME = 'MyIngress.ipv4_lpm'
 FORWARD_MATCH_FIELD = 'hdr.ipv4.dstAddr'
 FORWARD_ACTION = 'MyIngress.ipv4_forward'
+FORWARD_LAST_HOP = 'MyIngress.last_hop_forward'
 BITS_PER_SWITCH = 8 # number of bits to identify a host on a switch
 
 #file constants
@@ -153,11 +154,13 @@ class Switch(Node):
         self.switch.MasterArbitrationUpdate()
 
     
+    
     # A rule is a dictionary defined as:
     # rule {
     #   'dstAddr'     : mac address to forward
     #   'port'        : port to froward
     #   'match_field' : tuple of (ipv4 to match, size to match)
+    #   'last_hop'    : boolean that identify if this is a last hop action
     #   'id'          : identifier of the rule to statistical use
     #}
     def add_rule(self, rule):
@@ -166,12 +169,20 @@ class Switch(Node):
         self.print_rule(rule)
         rule['id'] = len(self.rules)
         self.rules.append(rule)
-        table_entry = self.p4info_helper.buildTableEntry(
-            table_name=FORWARD_TABLE_NAME,
-            match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
-            action_name=FORWARD_ACTION,
-            action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id']}   
-        )
+        if rule['last_hop']:
+            table_entry = self.p4info_helper.buildTableEntry(
+                table_name=FORWARD_TABLE_NAME,
+                match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
+                action_name=FORWARD_ACTION,
+                action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id']}   
+            )
+        else:
+            table_entry = self.p4info_helper.buildTableEntry(
+                table_name=FORWARD_TABLE_NAME,
+                match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
+                action_name=FORWARD_ACTION,
+                action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id']}   
+            )
         self.write_rule_on_file(rule)
         self.switch.WriteTableEntry(table_entry)
     
@@ -187,7 +198,10 @@ class Switch(Node):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
         print "Table name: " + FORWARD_TABLE_NAME
         print "Match Address: " + rule['match_field'][0] + ' \\' + str(rule['match_field'][1])
-        print "Action: " + FORWARD_ACTION
+        if rule['last_hop']:
+            print "Action: " + FORWARD_LAST_HOP
+        else:
+            print "Action: " + FORWARD_ACTION
         print "Destination MAC: " + rule['dstAddr']
         print "Destination port: " + str(rule['port'])
         print "\n"
@@ -237,13 +251,15 @@ class Topology:
             return {
                 'match_field' : (n2.get_IPv4(), 24), 
                 'dstAddr': '00:00:00:%02x:%02x:00' % (n2_num, n2_num),
-                'port' : port
+                'port' : port,
+                'last_hop' : False
             }    
         elif n2.type == HOST:
             return {
                 'match_field' : (n2.get_IPv4(), 32), 
                 'dstAddr': '00:00:00:00:%02x:%02x' % (n1_num, n2_num),
-                'port' : port
+                'port' : port,
+                'last_hop' : True
             }
 
     def has_link(self, node1, node2):
@@ -380,6 +396,7 @@ def main(p4info_file_path, bmv2_file_path):
         switches = [s1, s2, s3]
 
 
+        h0 = Host('h0', '10.0.0.1')
         h1 = Host('h1', '10.0.1.1')
         h11 = Host('h11', '10.0.1.11')
         h2 = Host('h2', '10.0.2.2')
@@ -390,6 +407,7 @@ def main(p4info_file_path, bmv2_file_path):
         topo.add_node(s1)
         topo.add_node(s2)
         topo.add_node(s3)
+        topo.add_node(h0)
         topo.add_node(h1)
         topo.add_node(h11)
         topo.add_node(h2)
@@ -402,19 +420,23 @@ def main(p4info_file_path, bmv2_file_path):
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
         # PHASE 2: INSTALL IPv4 FORWARDING RULES ON THE SWITCHES
-        topo.add_link('s1', 'h1', 2)
-        topo.add_link('s1', 'h11', 1)
-        topo.add_link('s1', 's2', 3)
-        topo.add_link('s1', 's3', 4)
+        topo.add_link('s1', 'h0', 1)
+        topo.add_link('s2', 'h0', 1)
+        topo.add_link('s3', 'h0', 1)
 
-        topo.add_link('s2', 'h2', 2)
-        topo.add_link('s2', 'h22', 1)
-        topo.add_link('s2', 's1', 3)
-        topo.add_link('s2', 's3', 4)
+        topo.add_link('s1', 'h1', 3)
+        topo.add_link('s1', 'h11', 2)
+        topo.add_link('s1', 's2', 4)
+        topo.add_link('s1', 's3', 5)
 
-        topo.add_link('s3', 'h3', 1)
-        topo.add_link('s3', 's1', 2)
-        topo.add_link('s3', 's2', 3)
+        topo.add_link('s2', 'h2', 3)
+        topo.add_link('s2', 'h22', 2)
+        topo.add_link('s2', 's1', 4)
+        topo.add_link('s2', 's3', 5)
+
+        topo.add_link('s3', 'h3', 2)
+        topo.add_link('s3', 's1', 3)
+        topo.add_link('s3', 's2', 4)
 
         topo.fill_switch_tables()
 

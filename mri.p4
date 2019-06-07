@@ -18,6 +18,8 @@ typedef bit<32> ip4Addr_t;
 typedef bit<32> uint_32;
 typedef bit<16> uint_16;
 
+const uint_32 I2E_CLONE_SESSION_ID = 5;
+
 header ethernet_t {
     macAddr_t dstAddr;
     macAddr_t srcAddr;
@@ -169,12 +171,40 @@ control MyIngress(inout headers hdr,
         meta.ingress_metadata.rule_id = ruleId;
     }
 
+    action last_hop_forward(
+        macAddr_t dstAddr, egressSpec_t port, uint_16 ruleId, 
+        macAddr_t dstAddr_stat, egressSpec_t port_stat)
+    {    
+        
+        // packet to be sent to statistical analysis
+        standard_metadata.egress_spec = port_stat;
+        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+        hdr.ethernet.dstAddr = dstAddr_stat;
+        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+        meta.ingress_metadata.rule_id = ruleId; // send rule_id because the rule that matters is the used to forward to the host
+
+        
+        // clone packet
+        // clone_i2e(100, clone_info);
+        clone3(CloneType.I2E, I2E_CLONE_SESSION_ID, standard_metadata);
+        
+        // packet to be sent to host
+        standard_metadata.egress_spec = port;
+        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+        hdr.ethernet.dstAddr = dstAddr;
+        meta.ingress_metadata.rule_id = ruleId;
+        // set telemetry headers to invalid
+        hdr.mri.setInvalid();
+        
+    }
+
     table ipv4_lpm {
         key = {
             hdr.ipv4.dstAddr: lpm;
         }
         actions = {
             ipv4_forward;
+            last_hop_forward;
             drop;
             NoAction;
         }
@@ -226,7 +256,10 @@ control MyEgress(inout headers hdr,
     apply {
         if (hdr.mri.isValid()) {
             swtrace.apply();
-        }
+        }/*else{
+            hdr.mri.setInvalid();
+            hdr.swtraces.setInvalid();
+        }*/
     }
 }
 
@@ -264,7 +297,8 @@ control MyDeparser(packet_out packet, in headers hdr) {
         packet.emit(hdr.ipv4);
         packet.emit(hdr.ipv4_option);
         packet.emit(hdr.mri);
-        packet.emit(hdr.swtraces);                 
+        packet.emit(hdr.swtraces);
+                         
     }
 }
 
