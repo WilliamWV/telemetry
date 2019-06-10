@@ -169,6 +169,7 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.dstAddr = dstAddr;
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
         meta.ingress_metadata.rule_id = ruleId;
+        
     }
 
     action last_hop_forward(
@@ -177,24 +178,42 @@ control MyIngress(inout headers hdr,
     {    
         
         // packet to be sent to statistical analysis
-        standard_metadata.egress_spec = port_stat;
-        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
-        hdr.ethernet.dstAddr = dstAddr_stat;
-        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
-        meta.ingress_metadata.rule_id = ruleId; // send rule_id because the rule that matters is the used to forward to the host
+        //standard_metadata.egress_spec = port_stat;
+        //hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+        //hdr.ethernet.dstAddr = dstAddr_stat;
+        //hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+        //meta.ingress_metadata.rule_id = ruleId; // send rule_id because the rule that matters is the used to forward to the host
 
         
         // clone packet
         // clone_i2e(100, clone_info);
-        clone3(CloneType.I2E, I2E_CLONE_SESSION_ID, standard_metadata);
+        hdr.ipv4.ihl = 5;
+        hdr.ipv4_option.optionLength = 0;
+        hdr.ipv4.totalLen = hdr.ipv4.totalLen - hdr.mri.count * 16 - 4;
+        hdr.mri.setInvalid();
+        hdr.ipv4_option.setInvalid();
+
+        hdr.swtraces[0].setInvalid();
+        hdr.swtraces[1].setInvalid();
+        hdr.swtraces[2].setInvalid();
+        hdr.swtraces[3].setInvalid();
+        hdr.swtraces[4].setInvalid();
+        hdr.swtraces[5].setInvalid();
+        hdr.swtraces[6].setInvalid();
+        hdr.swtraces[7].setInvalid();
+        hdr.swtraces[8].setInvalid();
+        
+        ipv4_forward(dstAddr, port, ruleId);
+        
+        //clone3(CloneType.I2E, I2E_CLONE_SESSION_ID, standard_metadata);
         
         // packet to be sent to host
-        standard_metadata.egress_spec = port;
-        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
-        hdr.ethernet.dstAddr = dstAddr;
-        meta.ingress_metadata.rule_id = ruleId;
+        //standard_metadata.egress_spec = port;
+        //hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+        //hdr.ethernet.dstAddr = dstAddr;
+        //meta.ingress_metadata.rule_id = ruleId;
         // set telemetry headers to invalid
-        hdr.mri.setInvalid();
+        //hdr.mri.setInvalid();
         
     }
 
@@ -212,10 +231,35 @@ control MyIngress(inout headers hdr,
         default_action = NoAction();
     }
     
+    action set_options(){
+        hdr.ipv4_option.setValid();
+        hdr.ipv4_option.option = IPV4_OPTION_MRI;
+        hdr.ipv4_option.optionLength = 2; // 1 (copyFlag) + 2 (optClass) + 5 (option) + 8 (optionLength) = 16 bits = 2 bytes
+        hdr.ipv4_option.optClass = 2; // "0" -> control; "2" -> debug and measurements; "1" and "3" are reserved
+        hdr.ipv4_option.copyFlag = 0; // It is not necessary to copy for each fragment
+
+        hdr.ipv4.ihl = hdr.ipv4.ihl + 1;
+        hdr.ipv4.totalLen = hdr.ipv4.totalLen + 2;
+    }
+
+    action set_mri(){
+        hdr.mri.setValid();
+        hdr.mri.count = 0;
+    }
+
     apply {
+        if (!hdr.ipv4_option.isValid()){
+            set_options();
+        }
+        if (!hdr.mri.isValid()) {
+            set_mri();
+            hdr.ipv4_option.optionLength = hdr.ipv4_option.optionLength + 2; 
+            hdr.ipv4.totalLen = hdr.ipv4.totalLen + 2;
+        }
         if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
         }
+        
     }
 }
 

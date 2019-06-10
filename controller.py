@@ -170,11 +170,13 @@ class Switch(Node):
         rule['id'] = len(self.rules)
         self.rules.append(rule)
         if rule['last_hop']:
+            s_name = int(self.name[1:])
+            stat_addr = '00:00:00:00:%02x:00' % (s_name)
             table_entry = self.p4info_helper.buildTableEntry(
                 table_name=FORWARD_TABLE_NAME,
                 match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
-                action_name=FORWARD_ACTION,
-                action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id']}   
+                action_name=FORWARD_LAST_HOP,
+                action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id'], 'dstAddr_stat': stat_addr, 'port_stat': 0}   
             )
         else:
             table_entry = self.p4info_helper.buildTableEntry(
