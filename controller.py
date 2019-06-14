@@ -34,7 +34,6 @@ BASE_PORT = 50051
 FORWARD_TABLE_NAME = 'MyIngress.ipv4_lpm'
 FORWARD_MATCH_FIELD = 'hdr.ipv4.dstAddr'
 FORWARD_ACTION = 'MyIngress.ipv4_forward'
-FORWARD_LAST_HOP = 'MyIngress.last_hop_forward'
 BITS_PER_SWITCH = 8 # number of bits to identify a host on a switch
 
 #file constants
@@ -114,6 +113,7 @@ class Switch(Node):
         Node.__init__(self, name, SWITCH)
         self.rules = []
         self.p4info_helper = p4info_helper
+        self.clone_session = int(self.name[1:]) + 2 # Adding luck number XD # add to differ from name
         self.init_switch()
         self.switch.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                        bmv2_json_file_path=bmv2_file_path)
@@ -130,6 +130,16 @@ class Switch(Node):
         )
         self.switch.WriteTableEntry(table_entry)
 
+    def install_clone_rule (self):
+        table_entry = self.p4info_helper.buildTableEntry(
+            table_name='MyEgress.clone_session',
+            default_action=True,
+            action_name='MyEgress.do_clone',
+            action_params={'session_id': self.session_id}
+        )
+        self.switch.WriteTableEntry(table_entry)
+
+        print "\nSwitch " + str(self.name) + "using clone session: " + str(self.session_id)
 
     def clear_rule_file(self):
         global RULES_DIR
@@ -169,22 +179,14 @@ class Switch(Node):
         self.print_rule(rule)
         rule['id'] = len(self.rules)
         self.rules.append(rule)
-        if rule['last_hop']:
-            s_name = int(self.name[1:])
-            stat_addr = '00:00:00:00:%02x:00' % (s_name)
-            table_entry = self.p4info_helper.buildTableEntry(
-                table_name=FORWARD_TABLE_NAME,
-                match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
-                action_name=FORWARD_LAST_HOP,
-                action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id'], 'dstAddr_stat': stat_addr, 'port_stat': 0}   
-            )
-        else:
-            table_entry = self.p4info_helper.buildTableEntry(
-                table_name=FORWARD_TABLE_NAME,
-                match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
-                action_name=FORWARD_ACTION,
-                action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id']}   
-            )
+
+        table_entry = self.p4info_helper.buildTableEntry(
+            table_name=FORWARD_TABLE_NAME,
+            match_fields={FORWARD_MATCH_FIELD: rule['match_field']},
+            action_name=FORWARD_ACTION,
+            action_params={'dstAddr': rule['dstAddr'], 'port': rule['port'], 'ruleId': rule['id'], 'lastHop': int(rule['last_hop'])}   
+        )
+        
         self.write_rule_on_file(rule)
         self.switch.WriteTableEntry(table_entry)
     
@@ -200,10 +202,8 @@ class Switch(Node):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
         print "Table name: " + FORWARD_TABLE_NAME
         print "Match Address: " + rule['match_field'][0] + ' \\' + str(rule['match_field'][1])
-        if rule['last_hop']:
-            print "Action: " + FORWARD_LAST_HOP
-        else:
-            print "Action: " + FORWARD_ACTION
+        print "Action: " + FORWARD_ACTION
+        print "Last hop: " + str(rule['last_hop'])
         print "Destination MAC: " + rule['dstAddr']
         print "Destination port: " + str(rule['port'])
         print "\n"
@@ -398,7 +398,7 @@ def main(p4info_file_path, bmv2_file_path):
         switches = [s1, s2, s3]
 
 
-        h0 = Host('h0', '10.0.0.1')
+        h99 = Host('h99', '10.0.2.99')
         h1 = Host('h1', '10.0.1.1')
         h11 = Host('h11', '10.0.1.11')
         h2 = Host('h2', '10.0.2.2')
@@ -409,7 +409,7 @@ def main(p4info_file_path, bmv2_file_path):
         topo.add_node(s1)
         topo.add_node(s2)
         topo.add_node(s3)
-        topo.add_node(h0)
+        topo.add_node(h99)
         topo.add_node(h1)
         topo.add_node(h11)
         topo.add_node(h2)
@@ -422,23 +422,21 @@ def main(p4info_file_path, bmv2_file_path):
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
         # PHASE 2: INSTALL IPv4 FORWARDING RULES ON THE SWITCHES
-        topo.add_link('s1', 'h0', 1)
-        topo.add_link('s2', 'h0', 1)
-        topo.add_link('s3', 'h0', 1)
+        topo.add_link('s2', 'h99', 3)
+        
+        topo.add_link('s1', 'h1', 2)
+        topo.add_link('s1', 'h11', 1)
+        topo.add_link('s1', 's2', 3)
+        topo.add_link('s1', 's3', 4)
 
-        topo.add_link('s1', 'h1', 3)
-        topo.add_link('s1', 'h11', 2)
-        topo.add_link('s1', 's2', 4)
-        topo.add_link('s1', 's3', 5)
-
-        topo.add_link('s2', 'h2', 3)
-        topo.add_link('s2', 'h22', 2)
+        topo.add_link('s2', 'h2', 2)
+        topo.add_link('s2', 'h22', 1)
         topo.add_link('s2', 's1', 4)
         topo.add_link('s2', 's3', 5)
 
-        topo.add_link('s3', 'h3', 2)
-        topo.add_link('s3', 's1', 3)
-        topo.add_link('s3', 's2', 4)
+        topo.add_link('s3', 'h3', 1)
+        topo.add_link('s3', 's1', 2)
+        topo.add_link('s3', 's2', 3)
 
         topo.fill_switch_tables()
 
