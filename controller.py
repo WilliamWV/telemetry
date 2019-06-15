@@ -118,6 +118,7 @@ class Switch(Node):
         self.switch.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                        bmv2_json_file_path=bmv2_file_path)
         self.install_telemetry_rule()
+        self.install_clone_rule()
         self.clear_rule_file()
         
 
@@ -135,11 +136,11 @@ class Switch(Node):
             table_name='MyEgress.clone_session',
             default_action=True,
             action_name='MyEgress.do_clone',
-            action_params={'session_id': self.session_id}
+            action_params={'session_id': self.clone_session}
         )
         self.switch.WriteTableEntry(table_entry)
 
-        print "\nSwitch " + str(self.name) + "using clone session: " + str(self.session_id)
+        print "\nSwitch " + str(self.name) + " using clone session: " + str(self.clone_session)
 
     def clear_rule_file(self):
         global RULES_DIR
