@@ -447,10 +447,10 @@ control MyEgress(inout headers hdr,
 
         }
         else{
-            if (hdr.mri.isValid()){
+            if (hdr.mri.isValid() && hdr.ipv4.dstAddr != STATS_CONTROLLER_IPV4){
                 //1) apply swtrace
                 swtrace.apply();
-                if (meta.ingress_metadata.last_hop == 1){
+                if (meta.ingress_metadata.last_hop == 1 ){
                     //2) copy telemetry headers to metadata
                     copy_telemetry_to_meta();
                     //3) recalculate packet size
