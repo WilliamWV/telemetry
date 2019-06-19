@@ -105,6 +105,7 @@ class Host(Node):
 ###    - write_rule_on_file(rule)   // writes a rule on a file so that it   ###
 ###                                 // can be readed by the statistical     ###
 ###                                 // controller                           ###
+###    - install_clone_rule()                                               ###
 ###    - clear_rule_file()                                                  ###
 ###############################################################################
 class Switch(Node):
@@ -382,9 +383,6 @@ def main(p4info_file_path, bmv2_file_path):
         print '# Controller for In-Band Telemetry #'
         print '####################################'
 
-        print 'Press [ENTER] to continue.'
-        raw_input()
-
         try:
             os.mkdir(RULES_DIR)
         except OSError, WindowsError:
@@ -443,8 +441,6 @@ def main(p4info_file_path, bmv2_file_path):
 
         readTableRulesFromSwitches(p4info_helper, sw_obj)
 
-        print 'Done, press [ENTER] to continue.'
-        raw_input()
         ## THE END
         print 'THE END.'
     except KeyboardInterrupt:

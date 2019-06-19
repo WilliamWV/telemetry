@@ -406,7 +406,7 @@ control MyEgress(inout headers hdr,
         hdr.swtraces[0].qdepth = meta.telemetry_metadata.qdepth1;
         hdr.swtraces[0].timestamp = meta.telemetry_metadata.timestamp1;
         hdr.swtraces[0].timedelta = meta.telemetry_metadata.timedelta1;
-        hdr.swtraces[0].rule_id = 2;
+        hdr.swtraces[0].rule_id = meta.telemetry_metadata.rule_id1;
         
         hdr.swtraces[1].setValid();
         if (hdr.mri.count > 1){
