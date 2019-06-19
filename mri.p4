@@ -93,13 +93,7 @@ struct headers {
 */
 struct telemetry_meta_t{
 
-    bit<16>   count;
-
-    uint_16   swid;           
-    uint_32   qdepth;         
-    uint_32   timestamp;       
-    uint_32   timedelta;      
-    uint_16   rule_id;        
+    bit<16>   count;       
 
     uint_16   swid1;           
     uint_32   qdepth1;         
@@ -357,11 +351,21 @@ control MyEgress(inout headers hdr,
         meta.telemetry_metadata.count = hdr.mri.count;
         
         
-        meta.telemetry_metadata.swid = hdr.swtraces[0].swid;
-        meta.telemetry_metadata.qdepth = hdr.swtraces[0].qdepth;
-        meta.telemetry_metadata.timestamp = hdr.swtraces[0].timestamp;
-        meta.telemetry_metadata.timedelta = hdr.swtraces[0].timedelta;
-        meta.telemetry_metadata.rule_id = hdr.swtraces[0].rule_id;
+        meta.telemetry_metadata.swid1 = hdr.swtraces[0].swid;
+        meta.telemetry_metadata.qdepth1 = hdr.swtraces[0].qdepth;
+        meta.telemetry_metadata.timestamp1 = hdr.swtraces[0].timestamp;
+        meta.telemetry_metadata.timedelta1 = hdr.swtraces[0].timedelta;
+        meta.telemetry_metadata.rule_id1 = hdr.swtraces[0].rule_id;
+
+        if (hdr.mri.count > 1){
+            meta.telemetry_metadata.swid2 = hdr.swtraces[1].swid;
+            meta.telemetry_metadata.qdepth2 = hdr.swtraces[1].qdepth;
+            meta.telemetry_metadata.timestamp2 = hdr.swtraces[1].timestamp;
+            meta.telemetry_metadata.timedelta2 = hdr.swtraces[1].timedelta;
+            meta.telemetry_metadata.rule_id2 = hdr.swtraces[1].rule_id;
+
+
+        }
 
     }
 
@@ -398,13 +402,20 @@ control MyEgress(inout headers hdr,
     action set_traces(){
 
         push_trace();
-        hdr.swtraces[0].swid = meta.telemetry_metadata.swid;
-        hdr.swtraces[0].qdepth = meta.telemetry_metadata.qdepth;
-        hdr.swtraces[0].timestamp = meta.telemetry_metadata.timestamp;
-        hdr.swtraces[0].timedelta = meta.telemetry_metadata.timedelta;
-        hdr.swtraces[0].rule_id = meta.telemetry_metadata.rule_id;
+        hdr.swtraces[0].swid = meta.telemetry_metadata.swid1;
+        hdr.swtraces[0].qdepth = meta.telemetry_metadata.qdepth1;
+        hdr.swtraces[0].timestamp = meta.telemetry_metadata.timestamp1;
+        hdr.swtraces[0].timedelta = meta.telemetry_metadata.timedelta1;
+        hdr.swtraces[0].rule_id = 2;
         
         hdr.swtraces[1].setValid();
+        if (hdr.mri.count > 1){
+            hdr.swtraces[1].swid = meta.telemetry_metadata.swid2;
+            hdr.swtraces[1].qdepth = meta.telemetry_metadata.qdepth2;
+            hdr.swtraces[1].timestamp = meta.telemetry_metadata.timestamp2;
+            hdr.swtraces[1].timedelta = meta.telemetry_metadata.timedelta2;
+            hdr.swtraces[1].rule_id = meta.telemetry_metadata.rule_id2;
+        }
     }
 
     action restore_telemetry_hdrs(){
