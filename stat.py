@@ -155,14 +155,14 @@ class Switch:
       new_flow.increment_pkts()
       self.add_flow(new_flow)
 
-    rule = self.rules[trace['rule_id']]
+    rule = self.rules[trace.rule_id]
     rule.increment_uses()
-    if (trace['qdepth'] > QUEUE_THRESHOLD or trace['timedelta'] > DELAY_THRESHOLD) and time.time() - self.last_congestion_print > CONGESTION_TIME:
+    if (trace.qdepth > QUEUE_THRESHOLD or trace.timedelta > DELAY_THRESHOLD) and time.time() - self.last_congestion_print > CONGESTION_TIME:
       self.print_congestion()
       self.last_congestion_print = time.time()
 
-    self.avg_delay = ((self.avg_delay * self.pkts) + trace['timedelta']) / (self.pkts + 1)  
-    self.avg_queue_ocupacy = ((self.avg_queue_ocupacy * self.pkts) + trace['qdepth']) / (self.pkts + 1)
+    self.avg_delay = ((self.avg_delay * self.pkts) + trace.timedelta) / (self.pkts + 1)  
+    self.avg_queue_ocupacy = ((self.avg_queue_ocupacy * self.pkts) + trace.qdepth) / (self.pkts + 1)
     self.pkts += 1
   
   def verify_flows(self):
@@ -184,57 +184,73 @@ class Switch:
       print '\tRule ' + str(rule.id) + ') ' + str(rule.key_addr) + '/' + str(rule.prefix_size) + ' => port ' + str(rule.egress_port) + ' (used ' + str(rule.times_used) + ' times)'
 
 
-###############################################################################
-### class Traces                                                            ###
-###  * Represent all the traces carried by a packet, this class is used to  ###
-###    store a list of these traces, also store the source host address     ###
-###  * Build the traces from a scapy packet                                 ###
-###  * Structure:                                                           ###
-###    - self.traces                                                        ###
-###    - self.src                                                           ###
-###  * Methods:                                                             ###
-###    - __init__ (pkt)                                                     ###
-###    - trace_to_dict(layer)      // based on a layer of the scapy packet  ###
-###                                // that contains a switch trace builds a ###
-###                                // python dictionary associating fields  ###
-###                                // with its values                       ###
-###    - build_traces(pkt)         // iterate through the packet layers     ###
-###                                // looking for traces                    ###
-###############################################################################
-class Traces:
-  
-  def __init__(self, pkt):
-    self.traces = []
-    self.src = pkt[IP].src
-    self.build_traces(pkt)
 
+
+ETHERNET_SIZE = 14
+SWTRACE_SIZE = 16
+IPV4_SIZE_BEFORE_SRC = 12
+
+def bytes_to_number(pkt, init, size):
+    num = 0
+    for i in range(size):
+      num = num * 256 + pkt[init + i]
+    return num
+
+
+def num_of_traces(pkt):
+  return bytes_to_number(pkt, ETHERNET_SIZE, 2)
+
+
+def get_source(pkt):
+    
+    init_byte = ipv4_start_byte(pkt) + IPV4_SIZE_BEFORE_SRC
+    source = ''
+    for i in range(4):
+      source += str(pkt[init_byte + i])
+      if i < 3:
+        source+='.'
+    return source
  
-  def trace_to_dict (self, layer):
-    global PRIMITIVE_TYPES
-    d = {}
-
-    if not getattr(layer, 'fields_desc', None):
-      return
-    for f in layer.fields_desc:
-      value = getattr(layer, f.name)
-      if value is type(None):
-        value = None
-      if not isinstance(value, PRIMITIVE_TYPES):
-        value = self.trace_to_dict(value)
-      d[f.name] = value
-    return d
+def ipv4_start_byte(pkt):
+  return ETHERNET_SIZE + 2 + SWTRACE_SIZE * num_of_traces(pkt)
 
 
-  def build_traces(self, pkt):
-    depth = 0
-    while True:
-      layer = pkt.getlayer(depth)
-      if not layer:
-        break
-      if layer.name == 'SwitchTrace':
-        self.traces.append(self.trace_to_dict(layer))
-      
-      depth+=1
+class Trace:
+  
+  def __init__(self, pkt, i):
+    global ETHERNET_SIZE, SWTRACE_SIZE
+    self.swid = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE, 2)
+    self.qdepth = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 2, 4)
+    self.timestamp = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 6, 4)
+    self.timedelta = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 10, 4)
+    self.rule_id = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 14, 2)
+    
+
+prev_time = time.time()
+switchs = {} # switch id -> Switch class instance
+
+def handle_pkt(pkt):
+    global prev_time
+    
+    pkt_bytes = [ord(b) for b in str(pkt)]
+
+    src = get_source(pkt_bytes)
+    
+    swtraces = [Trace(pkt_bytes, i) for i in range(num_of_traces(pkt_bytes))]
+    
+    if(time.time() - prev_time > VERIFY_TIME):
+      for sw in switchs.values():
+        sw.verify_flows()
+      prev_time = time.time()
+
+    for trace in swtraces:
+      try:
+        switchs[trace.swid].income_pkt(src, trace) 
+      except KeyError:
+        switchs[trace.swid] = Switch('s' + str(trace.swid))
+        switchs[trace.swid].income_pkt(src, trace)
+
+    sys.stdout.flush()
 
 
 def get_if():
@@ -248,59 +264,6 @@ def get_if():
         print "Cannot find eth0 interface"
         exit(1)
     return iface
-
-class SwitchTrace(Packet):
-    fields_desc = [
-                  ShortField("swid", 0),
-                  IntField("qdepth", 0),
-                  IntField("timestamp", 0),
-                  IntField("timedelta", 0),
-                  ShortField("rule_id", 0)]
-    def extract_padding(self, p):
-                return "", p
-
-class IPOption_MRI(IPOption):
-    name = "MRI"
-    option = 31
-    fields_desc = [ _IPOption_HDR,
-                    FieldLenField("length", None, fmt="B",
-                                  length_of="swtraces",
-                                  adjust=lambda pkt,l:l*2+4),
-                    ShortField("count", 0),
-                    PacketListField("swtraces",
-                                   [],
-                                   SwitchTrace,
-                                   count_from=lambda pkt:(pkt.count*1)) ]
-
-prev_time = time.time()
-switchs = {} # switch id -> Switch class instance
-
-
-
-
-def handle_pkt(pkt):
-    global prev_time
-    
-    swtraces = Traces(pkt)
-    
-    if(time.time() - prev_time > VERIFY_TIME):
-      for sw in switchs.values():
-        sw.verify_flows()
-      prev_time = time.time()
-
-    for trace in swtraces.traces:
-      sw = trace['swid']
-      try:
-
-        switchs[sw].income_pkt(swtraces.src, trace) 
-      except KeyError:
-        switchs[sw] = Switch('s' + str(sw))
-        switchs[sw].income_pkt(swtraces.src, trace)
-
-    pkt.show2()
-    #hexdump(pkt)
-    sys.stdout.flush()
-
 
 def main():
     iface = 'h99-eth0'
