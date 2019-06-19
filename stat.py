@@ -23,6 +23,26 @@ CONGESTION_TIME = 1
 DELAY_THRESHOLD = 0 # us
 QUEUE_THRESHOLD = 30 # packets on queue
 
+# used while reading packets` traces
+PRIMITIVE_TYPES = (int, float, str, bytes, bool, list, tuple, set, dict, type(None))
+
+###############################################################################
+### class Rule                                                              ###
+###  * Represents a rule on the forwarding table of one switch              ###
+###  * Used to store rule information and to keep track of how many times   ###
+###    this rule is used.                                                   ###
+###  * Structure:                                                           ###
+###    - self.id            // identifies the rule on the traces and on the ###
+###                         // file containing this rules                   ###
+###    - self.key_addr      // destination address to match this rule       ###
+###    - self.prefix_size   // prefix_size of the address to match          ###
+###    - self.egress_port                                                   ###
+###    - self.times_used                                                    ###
+###  * Methods:                                                             ###
+###    - __init__ (id, key, pr_size, port)                                  ###
+###    - increment_uses()                                                   ###
+###############################################################################
+
 class Rule:
 
   def __init__(self, id, key, pr_size, port):
@@ -36,6 +56,26 @@ class Rule:
   def increment_uses(self):
     self.times_used += 1
 
+###############################################################################
+### class Flow                                                              ###
+###  * Represents a flow passing through the switch, a flow here is         ###
+###    identified by its source address and is used to store info like the  ###
+###    time where the flow begins and if the flow is active or not, this is ###
+###    used to determine which flows are competing on the switch            ###
+###  * Also used to keep track of how many packets this flow generated      ###
+###  * Structure:                                                           ###
+###    - self.src           // source host of the flow                      ###
+###    - self.init_time                                                     ###
+###    - self.num_of_pkts                                                   ###
+###    - self.last_use                                                      ###
+###    - self.active                                                        ###
+###  * Methods:                                                             ###
+###    - __init__ (init_time, src)                                          ###
+###    - increment_pkts()                                                   ###
+###    - verify_active()             // checks if this flow is active by    ###
+###                                  // comparing the last use time with a  ###
+###                                  // threshold                           ###
+###############################################################################
 
 class Flow:
 
@@ -56,6 +96,31 @@ class Flow:
       self.active = False
 
 
+###############################################################################
+### class Switch                                                            ###
+###  * Represents a switch of the network containing information of the     ###
+###    flows and rules of this switch, also keeping track of the average    ###
+###    delay and the average queue ocupacy of this switch                   ###
+###  * This class is also responsible for printing the congestion reports   ###
+###  * Structure:                                                           ###
+###    - self.name                                                          ###
+###    - self.avg_delay                                                     ###
+###    - self.avg_queue_ocupacy                                             ###
+###    - self.pkts                                                          ###
+###    - self.flows                                                         ###
+###    - self.rules                                                         ###
+###    - self.last_congestion_print   // used to implement a time interval  ###
+###                                   // between congestion reports         ###
+###  * Methods:                                                             ###
+###    - __init__ (name)                                                    ###
+###    - init_rules()              // reads the switch rules from file      ###
+###    - add_flow(flow)                                                     ###
+###    - income_pkt(src, trace)    // used to update trace information      ###
+###                                // based on a newly received packet      ###
+###    - verify_flows()            // used to verify which flows remain     ###
+###                                // active                                ###
+###    - print_congestion()                                                 ###
+###############################################################################
 class Switch:
 
   def __init__(self, name):
@@ -75,34 +140,29 @@ class Switch:
       r = ast.literal_eval(line)
       rule = Rule(r['id'], r['match_field'][0], r['match_field'][1], r['port'])
       self.rules[r['id']] = rule
-
-  
-  def add_rule(self, rule):
-    self.rules[rule.id] = rule
-
   
   def add_flow(self, flow):
     self.flows[flow.src] = flow
 
   
-  def income_pkt (self, pkt):
+  def income_pkt (self, src, trace):
     global QUEUE_THRESHOLD, DELAY_THRESHOLD, CONGESTION_TIME
     try:
-      flow = self.flows[pkt[IP].src]
+      flow = self.flows[src]
       flow.increment_pkts()
     except KeyError:
-      new_flow = Flow(time.time(), pkt[IP].src)
+      new_flow = Flow(time.time(), src)
       new_flow.increment_pkts()
       self.add_flow(new_flow)
 
-    rule = self.rules[pkt[SwitchTrace].rule_id]
+    rule = self.rules[trace['rule_id']]
     rule.increment_uses()
-    if (pkt[SwitchTrace].qdepth > QUEUE_THRESHOLD or pkt[SwitchTrace].timedelta > DELAY_THRESHOLD) and time.time() - self.last_congestion_print > CONGESTION_TIME:
+    if (trace['qdepth'] > QUEUE_THRESHOLD or trace['timedelta'] > DELAY_THRESHOLD) and time.time() - self.last_congestion_print > CONGESTION_TIME:
       self.print_congestion()
       self.last_congestion_print = time.time()
 
-    self.avg_delay = ((self.avg_delay * self.pkts) + pkt[SwitchTrace].timedelta) / (self.pkts + 1)  
-    self.avg_queue_ocupacy = ((self.avg_queue_ocupacy * self.pkts) + pkt[SwitchTrace].qdepth) / (self.pkts + 1)
+    self.avg_delay = ((self.avg_delay * self.pkts) + trace['timedelta']) / (self.pkts + 1)  
+    self.avg_queue_ocupacy = ((self.avg_queue_ocupacy * self.pkts) + trace['qdepth']) / (self.pkts + 1)
     self.pkts += 1
   
   def verify_flows(self):
@@ -124,8 +184,57 @@ class Switch:
       print '\tRule ' + str(rule.id) + ') ' + str(rule.key_addr) + '/' + str(rule.prefix_size) + ' => port ' + str(rule.egress_port) + ' (used ' + str(rule.times_used) + ' times)'
 
 
-#maps sources
-flows = {}
+###############################################################################
+### class Traces                                                            ###
+###  * Represent all the traces carried by a packet, this class is used to  ###
+###    store a list of these traces, also store the source host address     ###
+###  * Build the traces from a scapy packet                                 ###
+###  * Structure:                                                           ###
+###    - self.traces                                                        ###
+###    - self.src                                                           ###
+###  * Methods:                                                             ###
+###    - __init__ (pkt)                                                     ###
+###    - trace_to_dict(layer)      // based on a layer of the scapy packet  ###
+###                                // that contains a switch trace builds a ###
+###                                // python dictionary associating fields  ###
+###                                // with its values                       ###
+###    - build_traces(pkt)         // iterate through the packet layers     ###
+###                                // looking for traces                    ###
+###############################################################################
+class Traces:
+  
+  def __init__(self, pkt):
+    self.traces = []
+    self.src = pkt[IP].src
+    self.build_traces(pkt)
+
+ 
+  def trace_to_dict (self, layer):
+    global PRIMITIVE_TYPES
+    d = {}
+
+    if not getattr(layer, 'fields_desc', None):
+      return
+    for f in layer.fields_desc:
+      value = getattr(layer, f.name)
+      if value is type(None):
+        value = None
+      if not isinstance(value, PRIMITIVE_TYPES):
+        value = self.trace_to_dict(value)
+      d[f.name] = value
+    return d
+
+
+  def build_traces(self, pkt):
+    depth = 0
+    while True:
+      layer = pkt.getlayer(depth)
+      if not layer:
+        break
+      if layer.name == 'SwitchTrace':
+        self.traces.append(self.trace_to_dict(layer))
+      
+      depth+=1
 
 
 def get_if():
@@ -166,20 +275,28 @@ class IPOption_MRI(IPOption):
 prev_time = time.time()
 switchs = {} # switch id -> Switch class instance
 
+
+
+
 def handle_pkt(pkt):
     global prev_time
+    
+    swtraces = Traces(pkt)
+    
     if(time.time() - prev_time > VERIFY_TIME):
       for sw in switchs.values():
         sw.verify_flows()
       prev_time = time.time()
 
-    try:
-      switchs[pkt[SwitchTrace].swid].income_pkt(pkt) 
-    except KeyError:
-      switchs[pkt[SwitchTrace].swid] = Switch('s' + str(pkt[SwitchTrace].swid))
-      switchs[pkt[SwitchTrace].swid].income_pkt(pkt)
+    for trace in swtraces.traces:
+      sw = trace['swid']
+      try:
 
-    print "got a packet"
+        switchs[sw].income_pkt(swtraces.src, trace) 
+      except KeyError:
+        switchs[sw] = Switch('s' + str(sw))
+        switchs[sw].income_pkt(swtraces.src, trace)
+
     pkt.show2()
     #hexdump(pkt)
     sys.stdout.flush()
