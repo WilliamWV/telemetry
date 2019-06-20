@@ -253,17 +253,6 @@ control MyIngress(inout headers hdr,
         default_action = NoAction();
     }
     
-    action set_options(){
-        hdr.ipv4_option.setValid();
-        hdr.ipv4_option.option = IPV4_OPTION_MRI;
-        hdr.ipv4_option.optionLength = 2; // 1 (copyFlag) + 2 (optClass) + 5 (option) + 8 (optionLength) = 16 bits = 2 bytes
-        hdr.ipv4_option.optClass = 2; // "0" -> control; "2" -> debug and measurements; "1" and "3" are reserved
-        hdr.ipv4_option.copyFlag = 0; // It is not necessary to copy for each fragment
-
-        hdr.ipv4.ihl = hdr.ipv4.ihl + 1;
-        hdr.ipv4.totalLen = hdr.ipv4.totalLen + 2;
-    }
-
     action set_mri(){
         hdr.mri.setValid();
         hdr.mri.count = 0;
@@ -272,13 +261,8 @@ control MyIngress(inout headers hdr,
 
     apply {
 
-        //if (!hdr.ipv4_option.isValid()){
-        //    set_options();
-        //}
         if (!hdr.mri.isValid() && hdr.ipv4.dstAddr != STATS_CONTROLLER_IPV4) {
             set_mri();
-            //hdr.ipv4_option.optionLength = hdr.ipv4_option.optionLength + 2; 
-            //hdr.ipv4.totalLen = hdr.ipv4.totalLen + 2;
         }
         if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
@@ -308,9 +292,6 @@ control MyEgress(inout headers hdr,
         hdr.swtraces[0].timedelta = (uint_32) standard_metadata.deq_timedelta;
         hdr.swtraces[0].rule_id = meta.ingress_metadata.rule_id;
 
-        //hdr.ipv4.ihl = hdr.ipv4.ihl + 4;
-        //hdr.ipv4_option.optionLength = hdr.ipv4_option.optionLength + 16; 
-	    //hdr.ipv4.totalLen = hdr.ipv4.totalLen + 16;
     }
 
     table swtrace {
@@ -322,20 +303,13 @@ control MyEgress(inout headers hdr,
     }
     
     
-    //Used to recalculate the size of the packet when the telemetry headers are removed
-    action recalculate_size(){
-        //hdr.ipv4.ihl = 5;
-        //hdr.ipv4_option.optionLength = 0;
-        //hdr.ipv4.totalLen = hdr.ipv4.totalLen - hdr.mri.count * 16 - 4;
-    }
-
+    
     action invalidate_telemetry_headers(){
         
         // Ipv4_options and mri invalidation
         hdr.mri.setInvalid();
         hdr.ethernet.etherType = TYPE_IPV4;
-        //hdr.ipv4_option.setInvalid();
-
+    
         // swtrace invalidation
         hdr.swtraces[0].setInvalid();
         hdr.swtraces[1].setInvalid();
@@ -383,13 +357,7 @@ control MyEgress(inout headers hdr,
         default_action = NoAction();
     }
     
-    action set_option(){
-        //hdr.ipv4_option.setValid();
-        //hdr.ipv4_option.option = IPV4_OPTION_MRI;
-        //hdr.ipv4_option.optClass = 2; // "0" -> control; "2" -> debug and measurements; "1" and "3" are reserved
-        //hdr.ipv4_option.copyFlag = 0; // It is not necessary to copy for each fragment
-    }
-
+    
     action set_mri(){
         hdr.mri.setValid();
         hdr.ethernet.etherType = TYPE_MRI;
@@ -422,27 +390,11 @@ control MyEgress(inout headers hdr,
 
     action restore_telemetry_hdrs(){
         
-        //set_option();
         set_mri();
         set_traces();
         
     }
 
-    action restore_pkt_size(){
-        //each switch trace contains 16 bytes so the new ihl will be:
-        // 5 (ipv4 fix fields) + 
-        // <number of traces> * 4 (traces) + 
-        //1 (16 bits -> counter of traces; 16 bits -> option fields)
-        //hdr.ipv4.ihl = 5 + (bit<4>)hdr.mri.count * 4 + 1;
-        
-        //the option size in bytes is:
-        // 2 (1b -> copyFlag; 2b->optClass; 5b-> option; 8b-> optionLength) + 
-        // 2 (traces counter has 16 bits) + 
-        // 16 * hdr.mri.count
-        //hdr.ipv4_option.optionLength = 2 + 2 + (bit<8>)hdr.mri.count * 16;
-
-        //hdr.ipv4.totalLen = hdr.ipv4.totalLen + (bit<16>)hdr.ipv4_option.optionLength;
-    }
     
     action redirect_to_stat(){
         hdr.ipv4.dstAddr = STATS_CONTROLLER_IPV4;
@@ -453,9 +405,7 @@ control MyEgress(inout headers hdr,
         if (IS_E2E_CLONE(standard_metadata)){
             //1) Restore telemetry headers
             restore_telemetry_hdrs();
-            //2) Restore packet size
-            //restore_pkt_size();
-            //3) redirect to stat
+            //2) redirect to stat
             redirect_to_stat();
 
         }
@@ -466,11 +416,9 @@ control MyEgress(inout headers hdr,
                 if (meta.ingress_metadata.last_hop == 1 ){
                     //2) copy telemetry headers to metadata
                     copy_telemetry_to_meta();
-                    //3) recalculate packet size
-                    //recalculate_size();
-                    //4) invalidate telemetry headers
+                    //3) invalidate telemetry headers
                     invalidate_telemetry_headers();
-                    //5) clone packet keeping metadata
+                    //4) clone packet keeping metadata
                     clone_session.apply();
                 }
 

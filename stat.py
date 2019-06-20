@@ -26,6 +26,9 @@ QUEUE_THRESHOLD = 30 # packets on queue
 # used while reading packets` traces
 PRIMITIVE_TYPES = (int, float, str, bytes, bool, list, tuple, set, dict, type(None))
 
+#type used to identify mri on ethernet
+MRI_TYPE = 0x6041
+
 ###############################################################################
 ### class Rule                                                              ###
 ###  * Represents a rule on the forwarding table of one switch              ###
@@ -229,27 +232,34 @@ class Trace:
 prev_time = time.time()
 switchs = {} # switch id -> Switch class instance
 
+def is_mri_pkt(pkt):
+  ether_type = bytes_to_number(pkt, 12, 2)
+  return ether_type == MRI_TYPE
+
 def handle_pkt(pkt):
     global prev_time
     
     pkt_bytes = [ord(b) for b in str(pkt)]
 
-    src = get_source(pkt_bytes)
-    
-    swtraces = [Trace(pkt_bytes, i) for i in range(num_of_traces(pkt_bytes))]
-    
-    if(time.time() - prev_time > VERIFY_TIME):
-      for sw in switchs.values():
-        sw.verify_flows()
-      prev_time = time.time()
+    if is_mri_pkt(pkt_bytes):
 
-    for trace in swtraces:
-      try:
-        switchs[trace.swid].income_pkt(src, trace) 
-      except KeyError:
-        switchs[trace.swid] = Switch('s' + str(trace.swid))
-        switchs[trace.swid].income_pkt(src, trace)
+      src = get_source(pkt_bytes)
+      
+      swtraces = [Trace(pkt_bytes, i) for i in range(num_of_traces(pkt_bytes))]
+      
+      if(time.time() - prev_time > VERIFY_TIME):
+        for sw in switchs.values():
+          sw.verify_flows()
+        prev_time = time.time()
 
+      for trace in swtraces:
+        try:
+          switchs[trace.swid].income_pkt(src, trace) 
+        except KeyError:
+          switchs[trace.swid] = Switch('s' + str(trace.swid))
+          switchs[trace.swid].income_pkt(src, trace)
+
+    
     sys.stdout.flush()
 
 
