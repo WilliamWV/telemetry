@@ -53,6 +53,7 @@ header ipv4_option_t {
 
 header mri_t {
     bit<16>  count;
+    bit<16>  toParse;
 }
 
 header switch_t {
@@ -96,6 +97,12 @@ struct headers {
 struct telemetry_meta_t{
 
     bit<16>   count;       
+
+    uint_16   swid0;           
+    uint_32   qdepth0;         
+    uint_32   timestamp0;       
+    uint_32   timedelta0;      
+    uint_16   rule_id0;        
 
     uint_16   swid1;           
     uint_32   qdepth1;         
@@ -192,7 +199,7 @@ parser MyParser(packet_in packet,
 
     state parse_mri {
         packet.extract(hdr.mri);
-        meta.parser_metadata.remaining = hdr.mri.count;
+        meta.parser_metadata.remaining = hdr.mri.toParse;
         transition select(meta.parser_metadata.remaining) {
             0 : parse_ipv4;
             default: parse_swtrace;
@@ -256,6 +263,7 @@ control MyIngress(inout headers hdr,
     action set_mri(){
         hdr.mri.setValid();
         hdr.mri.count = 0;
+        hdr.mri.toParse = 0;
         hdr.ethernet.etherType = TYPE_MRI;
     }
 
@@ -280,6 +288,7 @@ control MyEgress(inout headers hdr,
                  inout standard_metadata_t standard_metadata) {
     action add_swtrace(uint_16 swid) { 
         hdr.mri.count = hdr.mri.count + 1;
+        hdr.mri.toParse = hdr.mri.toParse + 1;
         hdr.swtraces.push_front(1);
         // According to the P4_16 spec, pushed elements are invalid, so we need
         // to call setValid(). Older bmv2 versions would mark the new header(s)
@@ -325,21 +334,68 @@ control MyEgress(inout headers hdr,
     action copy_telemetry_to_meta(){
         meta.telemetry_metadata.count = hdr.mri.count;
         
-        
-        meta.telemetry_metadata.swid1 = hdr.swtraces[0].swid;
-        meta.telemetry_metadata.qdepth1 = hdr.swtraces[0].qdepth;
-        meta.telemetry_metadata.timestamp1 = hdr.swtraces[0].timestamp;
-        meta.telemetry_metadata.timedelta1 = hdr.swtraces[0].timedelta;
-        meta.telemetry_metadata.rule_id1 = hdr.swtraces[0].rule_id;
-
+        if (hdr.mri.count > 0){
+            meta.telemetry_metadata.swid0 = hdr.swtraces[0].swid;
+            meta.telemetry_metadata.qdepth0 = hdr.swtraces[0].qdepth;
+            meta.telemetry_metadata.timestamp0 = hdr.swtraces[0].timestamp;
+            meta.telemetry_metadata.timedelta0 = hdr.swtraces[0].timedelta;
+            meta.telemetry_metadata.rule_id0 = hdr.swtraces[0].rule_id;
+        }
         if (hdr.mri.count > 1){
-            meta.telemetry_metadata.swid2 = hdr.swtraces[1].swid;
-            meta.telemetry_metadata.qdepth2 = hdr.swtraces[1].qdepth;
-            meta.telemetry_metadata.timestamp2 = hdr.swtraces[1].timestamp;
-            meta.telemetry_metadata.timedelta2 = hdr.swtraces[1].timedelta;
-            meta.telemetry_metadata.rule_id2 = hdr.swtraces[1].rule_id;
-
-
+            meta.telemetry_metadata.swid1 = hdr.swtraces[1].swid;
+            meta.telemetry_metadata.qdepth1 = hdr.swtraces[1].qdepth;
+            meta.telemetry_metadata.timestamp1 = hdr.swtraces[1].timestamp;
+            meta.telemetry_metadata.timedelta1 = hdr.swtraces[1].timedelta;
+            meta.telemetry_metadata.rule_id1 = hdr.swtraces[1].rule_id;
+        }
+        if (hdr.mri.count > 2){
+            meta.telemetry_metadata.swid2 = hdr.swtraces[2].swid;
+            meta.telemetry_metadata.qdepth2 = hdr.swtraces[2].qdepth;
+            meta.telemetry_metadata.timestamp2 = hdr.swtraces[2].timestamp;
+            meta.telemetry_metadata.timedelta2 = hdr.swtraces[2].timedelta;
+            meta.telemetry_metadata.rule_id2 = hdr.swtraces[2].rule_id;
+        }
+        if (hdr.mri.count > 3){
+            meta.telemetry_metadata.swid3 = hdr.swtraces[3].swid;
+            meta.telemetry_metadata.qdepth3 = hdr.swtraces[3].qdepth;
+            meta.telemetry_metadata.timestamp3 = hdr.swtraces[3].timestamp;
+            meta.telemetry_metadata.timedelta3 = hdr.swtraces[3].timedelta;
+            meta.telemetry_metadata.rule_id3 = hdr.swtraces[3].rule_id;
+        }
+        if (hdr.mri.count > 4){
+            meta.telemetry_metadata.swid4 = hdr.swtraces[4].swid;
+            meta.telemetry_metadata.qdepth4 = hdr.swtraces[4].qdepth;
+            meta.telemetry_metadata.timestamp4 = hdr.swtraces[4].timestamp;
+            meta.telemetry_metadata.timedelta4 = hdr.swtraces[4].timedelta;
+            meta.telemetry_metadata.rule_id4 = hdr.swtraces[4].rule_id;
+        }
+        if (hdr.mri.count > 5){
+            meta.telemetry_metadata.swid5 = hdr.swtraces[5].swid;
+            meta.telemetry_metadata.qdepth5 = hdr.swtraces[5].qdepth;
+            meta.telemetry_metadata.timestamp5 = hdr.swtraces[5].timestamp;
+            meta.telemetry_metadata.timedelta5 = hdr.swtraces[5].timedelta;
+            meta.telemetry_metadata.rule_id5 = hdr.swtraces[5].rule_id;
+        }
+        if (hdr.mri.count > 6){
+            meta.telemetry_metadata.swid6 = hdr.swtraces[6].swid;
+            meta.telemetry_metadata.qdepth6 = hdr.swtraces[6].qdepth;
+            meta.telemetry_metadata.timestamp6 = hdr.swtraces[6].timestamp;
+            meta.telemetry_metadata.timedelta6 = hdr.swtraces[6].timedelta;
+            meta.telemetry_metadata.rule_id6 = hdr.swtraces[6].rule_id;
+        }
+        if (hdr.mri.count > 7){
+            meta.telemetry_metadata.swid7 = hdr.swtraces[7].swid;
+            meta.telemetry_metadata.qdepth7 = hdr.swtraces[7].qdepth;
+            meta.telemetry_metadata.timestamp7 = hdr.swtraces[7].timestamp;
+            meta.telemetry_metadata.timedelta7 = hdr.swtraces[7].timedelta;
+            meta.telemetry_metadata.rule_id7 = hdr.swtraces[7].rule_id;
+        }
+        if (hdr.mri.count > 8){
+            meta.telemetry_metadata.swid8 = hdr.swtraces[8].swid;
+            meta.telemetry_metadata.qdepth8 = hdr.swtraces[8].qdepth;
+            meta.telemetry_metadata.timestamp8 = hdr.swtraces[8].timestamp;
+            meta.telemetry_metadata.timedelta8 = hdr.swtraces[8].timedelta;
+            meta.telemetry_metadata.rule_id8 = hdr.swtraces[8].rule_id;
         }
 
     }
@@ -362,30 +418,94 @@ control MyEgress(inout headers hdr,
         hdr.mri.setValid();
         hdr.ethernet.etherType = TYPE_MRI;
         hdr.mri.count = meta.telemetry_metadata.count;
+        hdr.mri.toParse = MAX_HOPS;
     }
 
-    action push_trace(){
-        hdr.swtraces.push_front(1);
-        hdr.swtraces[0].setValid();
-
-    }
     action set_traces(){
 
-        push_trace();
-        hdr.swtraces[0].swid = meta.telemetry_metadata.swid1;
-        hdr.swtraces[0].qdepth = meta.telemetry_metadata.qdepth1;
-        hdr.swtraces[0].timestamp = meta.telemetry_metadata.timestamp1;
-        hdr.swtraces[0].timedelta = meta.telemetry_metadata.timedelta1;
-        hdr.swtraces[0].rule_id = meta.telemetry_metadata.rule_id1;
-        
+        hdr.swtraces[0].setValid();
+        if (hdr.mri.count > 0){
+
+            hdr.swtraces[0].swid = meta.telemetry_metadata.swid0;
+            hdr.swtraces[0].qdepth = meta.telemetry_metadata.qdepth0;
+            hdr.swtraces[0].timestamp = meta.telemetry_metadata.timestamp0;
+            hdr.swtraces[0].timedelta = meta.telemetry_metadata.timedelta0;
+            hdr.swtraces[0].rule_id = meta.telemetry_metadata.rule_id0;
+        }
         hdr.swtraces[1].setValid();
         if (hdr.mri.count > 1){
-            hdr.swtraces[1].swid = meta.telemetry_metadata.swid2;
-            hdr.swtraces[1].qdepth = meta.telemetry_metadata.qdepth2;
-            hdr.swtraces[1].timestamp = meta.telemetry_metadata.timestamp2;
-            hdr.swtraces[1].timedelta = meta.telemetry_metadata.timedelta2;
-            hdr.swtraces[1].rule_id = meta.telemetry_metadata.rule_id2;
+            
+            hdr.swtraces[1].swid = meta.telemetry_metadata.swid1;
+            hdr.swtraces[1].qdepth = meta.telemetry_metadata.qdepth1;
+            hdr.swtraces[1].timestamp = meta.telemetry_metadata.timestamp1;
+            hdr.swtraces[1].timedelta = meta.telemetry_metadata.timedelta1;
+            hdr.swtraces[1].rule_id = meta.telemetry_metadata.rule_id1;
         }
+        hdr.swtraces[2].setValid();
+        if (hdr.mri.count > 2){
+            
+            hdr.swtraces[2].swid = meta.telemetry_metadata.swid2;
+            hdr.swtraces[2].qdepth = meta.telemetry_metadata.qdepth2;
+            hdr.swtraces[2].timestamp = meta.telemetry_metadata.timestamp2;
+            hdr.swtraces[2].timedelta = meta.telemetry_metadata.timedelta2;
+            hdr.swtraces[2].rule_id = meta.telemetry_metadata.rule_id2;
+        }
+        hdr.swtraces[3].setValid();
+        if (hdr.mri.count > 3){
+            
+            hdr.swtraces[3].swid = meta.telemetry_metadata.swid3;
+            hdr.swtraces[3].qdepth = meta.telemetry_metadata.qdepth3;
+            hdr.swtraces[3].timestamp = meta.telemetry_metadata.timestamp3;
+            hdr.swtraces[3].timedelta = meta.telemetry_metadata.timedelta3;
+            hdr.swtraces[3].rule_id = meta.telemetry_metadata.rule_id3;
+        }
+        hdr.swtraces[4].setValid();
+        if (hdr.mri.count > 4){
+            
+            hdr.swtraces[4].swid = meta.telemetry_metadata.swid4;
+            hdr.swtraces[4].qdepth = meta.telemetry_metadata.qdepth4;
+            hdr.swtraces[4].timestamp = meta.telemetry_metadata.timestamp4;
+            hdr.swtraces[4].timedelta = meta.telemetry_metadata.timedelta4;
+            hdr.swtraces[4].rule_id = meta.telemetry_metadata.rule_id4;
+        }
+        hdr.swtraces[5].setValid();
+        if (hdr.mri.count > 5){
+            
+            hdr.swtraces[5].swid = meta.telemetry_metadata.swid5;
+            hdr.swtraces[5].qdepth = meta.telemetry_metadata.qdepth5;
+            hdr.swtraces[5].timestamp = meta.telemetry_metadata.timestamp5;
+            hdr.swtraces[5].timedelta = meta.telemetry_metadata.timedelta5;
+            hdr.swtraces[5].rule_id = meta.telemetry_metadata.rule_id5;
+        }
+        hdr.swtraces[6].setValid();
+        if (hdr.mri.count > 6){
+            
+            hdr.swtraces[6].swid = meta.telemetry_metadata.swid6;
+            hdr.swtraces[6].qdepth = meta.telemetry_metadata.qdepth6;
+            hdr.swtraces[6].timestamp = meta.telemetry_metadata.timestamp6;
+            hdr.swtraces[6].timedelta = meta.telemetry_metadata.timedelta6;
+            hdr.swtraces[6].rule_id = meta.telemetry_metadata.rule_id6;
+        }
+        hdr.swtraces[7].setValid();
+        if (hdr.mri.count > 7){
+            
+            hdr.swtraces[7].swid = meta.telemetry_metadata.swid7;
+            hdr.swtraces[7].qdepth = meta.telemetry_metadata.qdepth7;
+            hdr.swtraces[7].timestamp = meta.telemetry_metadata.timestamp7;
+            hdr.swtraces[7].timedelta = meta.telemetry_metadata.timedelta7;
+            hdr.swtraces[7].rule_id = meta.telemetry_metadata.rule_id7;
+        }
+        hdr.swtraces[8].setValid();
+        if (hdr.mri.count > 8){
+            
+            hdr.swtraces[8].swid = meta.telemetry_metadata.swid8;
+            hdr.swtraces[8].qdepth = meta.telemetry_metadata.qdepth8;
+            hdr.swtraces[8].timestamp = meta.telemetry_metadata.timestamp8;
+            hdr.swtraces[8].timedelta = meta.telemetry_metadata.timedelta8;
+            hdr.swtraces[8].rule_id = meta.telemetry_metadata.rule_id8;
+        }
+
+
     }
 
     action restore_telemetry_hdrs(){

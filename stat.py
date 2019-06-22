@@ -191,6 +191,7 @@ class Switch:
 
 ETHERNET_SIZE = 14
 SWTRACE_SIZE = 16
+MRI_SIZE = 4
 IPV4_SIZE_BEFORE_SRC = 12
 
 def bytes_to_number(pkt, init, size):
@@ -203,7 +204,6 @@ def bytes_to_number(pkt, init, size):
 def num_of_traces(pkt):
   return bytes_to_number(pkt, ETHERNET_SIZE, 2)
 
-
 def get_source(pkt):
     
     init_byte = ipv4_start_byte(pkt) + IPV4_SIZE_BEFORE_SRC
@@ -215,20 +215,20 @@ def get_source(pkt):
     return source
  
 def ipv4_start_byte(pkt):
-  return ETHERNET_SIZE + 2 + SWTRACE_SIZE * num_of_traces(pkt)
+  return ETHERNET_SIZE + MRI_SIZE + SWTRACE_SIZE * bytes_to_number(pkt, ETHERNET_SIZE + 2, 2)
 
 
 class Trace:
   
   def __init__(self, pkt, i):
-    global ETHERNET_SIZE, SWTRACE_SIZE
-    self.swid = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE, 2)
-    self.qdepth = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 2, 4)
-    self.timestamp = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 6, 4)
-    self.timedelta = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 10, 4)
-    self.rule_id = bytes_to_number(pkt, ETHERNET_SIZE + 2 + i*SWTRACE_SIZE + 14, 2)
+    global ETHERNET_SIZE, SWTRACE_SIZE, MRI_SIZE
+    self.swid = bytes_to_number(pkt, ETHERNET_SIZE + MRI_SIZE + i*SWTRACE_SIZE, 2)
+    self.qdepth = bytes_to_number(pkt, ETHERNET_SIZE + MRI_SIZE + i*SWTRACE_SIZE + 2, 4)
+    self.timestamp = bytes_to_number(pkt, ETHERNET_SIZE + MRI_SIZE + i*SWTRACE_SIZE + 6, 4)
+    self.timedelta = bytes_to_number(pkt, ETHERNET_SIZE + MRI_SIZE + i*SWTRACE_SIZE + 10, 4)
+    self.rule_id = bytes_to_number(pkt, ETHERNET_SIZE + MRI_SIZE + i*SWTRACE_SIZE + 14, 2)
     
-
+  
 prev_time = time.time()
 switchs = {} # switch id -> Switch class instance
 
