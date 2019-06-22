@@ -238,7 +238,6 @@ def is_mri_pkt(pkt):
 
 def handle_pkt(pkt):
     global prev_time
-    
     pkt_bytes = [ord(b) for b in str(pkt)]
 
     if is_mri_pkt(pkt_bytes):
@@ -256,7 +255,7 @@ def handle_pkt(pkt):
         try:
           switchs[trace.swid].income_pkt(src, trace) 
         except KeyError:
-          switchs[trace.swid] = Switch('s' + str(trace.swid))
+          switchs[trace.swid] = Switch('s%02d' % (trace.swid))
           switchs[trace.swid].income_pkt(src, trace)
 
     
@@ -276,7 +275,7 @@ def get_if():
     return iface
 
 def main():
-    iface = 'h99-eth0'
+    iface = 'h070-eth0'
     print "sniffing on %s" % iface
     sys.stdout.flush()
     sniff(iface = iface,

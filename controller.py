@@ -343,35 +343,7 @@ class Topology:
 #####################          GENERAL FUNCTIONS          #####################
 ###############################################################################  
 
-def readTableRules(p4info_helper, sw):
-    """
-    Reads the table entries from all tables on the switch.
 
-    :param p4info_helper: the P4Info helper
-    :param sw: the switch connection
-    """
-    print '\n----- Reading tables rules for %s -----' % sw.name
-    for response in sw.ReadTableEntries():
-        for entity in response.entities:
-            entry = entity.table_entry
-            table_name = p4info_helper.get_tables_name(entry.table_id)
-            print '%s: ' % table_name,
-            for m in entry.match:
-                print p4info_helper.get_match_field_name(table_name, m.field_id),
-                print '%r' % (p4info_helper.get_match_field_value(m),),
-            action = entry.action.action
-            action_name = p4info_helper.get_actions_name(action.action_id)
-            print '->', action_name,
-            for p in action.params:
-                print p4info_helper.get_action_param_name(action_name, p.param_id),
-                print '%r' % p.value,
-            print
-
-
-def readTableRulesFromSwitches(p4info_helper, switches):
-    for sw in switches:
-        readTableRules(p4info_helper, sw)
-        print "-----"
 
 
 def main(p4info_file_path, bmv2_file_path):
@@ -472,10 +444,6 @@ def main(p4info_file_path, bmv2_file_path):
         topo.add_node(h123)
         topo.add_node(h131)
         
-        # PHASE 1: INSTALL THE P4 PROGRAM ON THE SWITCHES
-        
-        sw_obj = [s.get_switch() for s in switches]
-        readTableRulesFromSwitches(p4info_helper, sw_obj)
 
         # PHASE 2: INSTALL IPv4 FORWARDING RULES ON THE SWITCHES
         
@@ -547,8 +515,6 @@ def main(p4info_file_path, bmv2_file_path):
         
 
         topo.fill_switch_tables()
-
-        readTableRulesFromSwitches(p4info_helper, sw_obj)
 
         ## THE END
         print 'THE END.'

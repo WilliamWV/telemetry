@@ -21,7 +21,7 @@ typedef bit<32> ip4Addr_t;
 typedef bit<32> uint_32;
 typedef bit<16> uint_16;
 
-const ip4Addr_t STATS_CONTROLLER_IPV4 = 0x0a000263; // 10.0.2.99
+const ip4Addr_t STATS_CONTROLLER_IPV4 = 0x0a000746; // 10.0.7.70
 
 header ethernet_t {
     macAddr_t dstAddr;
