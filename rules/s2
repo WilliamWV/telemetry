@@ -1,5 +1,0 @@
-{'last_hop': True, 'match_field': ('10.0.2.99', 32), 'dstAddr': '00:00:00:00:02:63', 'port': 3, 'id': 0}
-{'last_hop': True, 'match_field': ('10.0.2.2', 32), 'dstAddr': '00:00:00:00:02:02', 'port': 2, 'id': 1}
-{'last_hop': True, 'match_field': ('10.0.2.22', 32), 'dstAddr': '00:00:00:00:02:16', 'port': 1, 'id': 2}
-{'last_hop': False, 'match_field': ('10.0.01.0', 24), 'dstAddr': '00:00:00:01:01:00', 'port': 4, 'id': 3}
-{'last_hop': False, 'match_field': ('10.0.03.0', 24), 'dstAddr': '00:00:00:03:03:00', 'port': 5, 'id': 4}
