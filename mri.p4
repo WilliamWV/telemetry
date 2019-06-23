@@ -269,7 +269,7 @@ control MyIngress(inout headers hdr,
 
     apply {
 
-        if (!hdr.mri.isValid() && hdr.ipv4.dstAddr != STATS_CONTROLLER_IPV4) {
+        if (!hdr.mri.isValid() && hdr.ipv4.dstAddr != STATS_CONTROLLER_IPV4 && hdr.ethernet.etherType == TYPE_IPV4) {
             set_mri();
         }
         if (hdr.ipv4.isValid()) {
