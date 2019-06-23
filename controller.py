@@ -105,7 +105,6 @@ class Host(Node):
 ###    - write_rule_on_file(rule)   // writes a rule on a file so that it   ###
 ###                                 // can be readed by the statistical     ###
 ###                                 // controller                           ###
-###    - install_clone_rule()                                               ###
 ###    - clear_rule_file()                                                  ###
 ###############################################################################
 class Switch(Node):
@@ -114,12 +113,10 @@ class Switch(Node):
         Node.__init__(self, name, SWITCH)
         self.rules = []
         self.p4info_helper = p4info_helper
-        self.clone_session = int(self.name[1:])
         self.init_switch()
         self.switch.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                        bmv2_json_file_path=bmv2_file_path)
         self.install_telemetry_rule()
-        self.install_clone_rule()
         self.clear_rule_file()
         
 
@@ -132,17 +129,7 @@ class Switch(Node):
         )
         self.switch.WriteTableEntry(table_entry)
 
-    def install_clone_rule (self):
-        table_entry = self.p4info_helper.buildTableEntry(
-            table_name='MyEgress.clone_session',
-            default_action=True,
-            action_name='MyEgress.do_clone',
-            action_params={'session_id': self.clone_session}
-        )
-        self.switch.WriteTableEntry(table_entry)
-
-        print "\nSwitch " + str(self.name) + " using clone session: " + str(self.clone_session)
-
+    
     def clear_rule_file(self):
         global RULES_DIR
         file_name = RULES_DIR + self.name

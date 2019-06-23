@@ -22,6 +22,7 @@ typedef bit<32> uint_32;
 typedef bit<16> uint_16;
 
 const ip4Addr_t STATS_CONTROLLER_IPV4 = 0x0a000746; // 10.0.7.70
+const uint_32   MIRRORING_SESSION = 2;
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -401,18 +402,10 @@ control MyEgress(inout headers hdr,
     }
 
 
-    action do_clone(uint_32 session_id){
-        clone3(CloneType.E2E, session_id, {standard_metadata, meta});
+    action do_clone(){
+        clone3(CloneType.E2E, MIRRORING_SESSION, {standard_metadata, meta});
     }
 
-    table clone_session {
-        actions = {
-            do_clone;
-            NoAction;
-        }
-        default_action = NoAction();
-    }
-    
     
     action set_mri(){
         hdr.mri.setValid();
@@ -539,7 +532,7 @@ control MyEgress(inout headers hdr,
                     //3) invalidate telemetry headers
                     invalidate_telemetry_headers();
                     //4) clone packet keeping metadata
-                    clone_session.apply();
+                    do_clone();
                 }
 
             }
