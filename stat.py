@@ -107,8 +107,8 @@ class Flow:
 ###  * This class is also responsible for printing the congestion reports   ###
 ###  * Structure:                                                           ###
 ###    - self.name                                                          ###
-###    - self.avg_delay                                                     ###
-###    - self.avg_queue_ocupacy                                             ###
+###    - self.last_delay                                                    ###
+###    - self.last_queue_ocupacy                                            ###
 ###    - self.pkts                                                          ###
 ###    - self.flows                                                         ###
 ###    - self.rules                                                         ###
@@ -128,13 +128,15 @@ class Switch:
 
   def __init__(self, name):
     self.name = name
-    self.avg_delay = 0
-    self.avg_queue_ocupacy = 0
+    self.delay = 0
+    self.queue_ocupacy = 0
     self.pkts = 0
     self.flows = {} # {flow source -> Flow class instance}
     self.rules = {} # {rule id     -> Rule class instance}
     self.last_congestion_print = -1
     self.init_rules()
+    self.alpha = 0.1 # usado para estimar o delay e a ocupacao da fila, 
+                     # quanto maior mais valoriza a experiencia imediata  
 
   def init_rules(self):
     global RULES_DIR
@@ -164,10 +166,9 @@ class Switch:
       self.print_congestion()
       self.last_congestion_print = time.time()
 
-    self.avg_delay = ((self.avg_delay * self.pkts) + trace.timedelta) / (self.pkts + 1)  
-    self.avg_queue_ocupacy = ((self.avg_queue_ocupacy * self.pkts) + trace.qdepth) / (self.pkts + 1)
-    self.pkts += 1
-  
+    self.delay = (1-self.alpha) * self.delay + self.alpha * trace.timedelta  
+    self.queue_ocupacy =  (1-self.alpha) * self.queue_ocupacy + self.alpha * trace.qdepth
+    
   def verify_flows(self):
     active_flows = [f for f in self.flows.values() if f.active]
     for f in active_flows:
@@ -180,8 +181,8 @@ class Switch:
     active_flows = [f for f in self.flows.values() if f.active]
     for f in active_flows:
       print '\tFlow from ' + str(f.src) + ' started ' + '%.2f' % (time.time() - f.init_time) + ' seconds ago -> ' + str(f.num_of_pkts) + ' packets'
-    print 'This congestion is causing an average delay of ' + str(float(self.avg_delay)/1000.0) + 'ms'
-    print 'The queue ocupacy of this switch is ' + str(self.avg_queue_ocupacy) + '%'
+    print 'Delay estimation %.2f' % (float(self.delay)/1000.0) + 'ms'
+    print 'Queue ocupacy estimation: %.0f' % (self.queue_ocupacy) + ' packets'
     print 'The forwarding rules of this switch are:'
     for rule in self.rules.values():
       print '\tRule ' + str(rule.id) + ') ' + str(rule.key_addr) + '/' + str(rule.prefix_size) + ' => port ' + str(rule.egress_port) + ' (used ' + str(rule.times_used) + ' times)'
