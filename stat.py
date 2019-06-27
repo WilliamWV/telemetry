@@ -3,6 +3,7 @@ import sys
 import struct
 import time
 import ast
+import argparse
 
 from scapy.all import sniff, sendp, hexdump, get_if_list, get_if_hwaddr
 from scapy.all import Packet, IPOption
@@ -21,7 +22,7 @@ RULES_DIR = 'rules'
 CONGESTION_TIME = 1 
 # thresholds from which a switch will be considered congested
 DELAY_THRESHOLD = 0 # us
-QUEUE_THRESHOLD = 30 # packets on queue
+QUEUE_THRESHOLD = 0 # packets on queue
 
 # used while reading packets` traces
 PRIMITIVE_TYPES = (int, float, str, bytes, bool, list, tuple, set, dict, type(None))
@@ -240,7 +241,6 @@ def is_mri_pkt(pkt):
 def handle_pkt(pkt):
     global prev_time
     pkt_bytes = [ord(b) for b in str(pkt)]
-
     if is_mri_pkt(pkt_bytes):
 
       src = get_source(pkt_bytes)
@@ -282,5 +282,17 @@ def main():
     sniff(iface = iface,
           prn = lambda x: handle_pkt(x))
 
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Statisticl analiser')
+    parser.add_argument('-d', '--delay', help='Delay threshold in milisseconds',
+                        type=int, action="store", required=True)
+    parser.add_argument('-q', '--queue_oc', help='Queue ocupacy threshold in packets', 
+                        type=int, action="store", required=True)
+    args = parser.parse_args()
+
+    DELAY_THRESHOLD = args.delay * 1000
+    QUEUE_THRESHOLD = args.queue_oc
+
     main()
+
