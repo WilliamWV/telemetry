@@ -3,6 +3,7 @@ import argparse
 import grpc
 import os
 import sys
+import json
 from time import sleep
 
 # Import P4Runtime lib from parent utils dir
@@ -164,8 +165,7 @@ class Switch(Node):
     #}
     def add_rule(self, rule):
         global FORWARD_ACTION, FORWARD_TABLE_NAME, FORWARD_MATCH_FIELD
-        print "Installing forward rule on switch " + self.name
-        self.print_rule(rule)
+        #self.print_rule(rule)
         rule['id'] = len(self.rules)
         self.rules.append(rule)
 
@@ -225,9 +225,48 @@ class Switch(Node):
 class Topology:
     # represents topology nodes
 
-    def __init__(self):
+    def __init__(self, file, p4info_helper, bmv2_file_path):
         self.nodes = {}
         self.links = []
+        self.build_topo(open(file), p4info_helper, bmv2_file_path)
+
+    def build_host_ip(self, host):
+        return '10.0.%d.%d' % (int(host[1:(len(host)-1)]) , int(host[1:]))
+
+    def build_topo(self, file, p4info_helper, bmv2_file_path):
+        js = json.load(file)
+        
+        sw = [str(s) for s in js["switches"]]
+
+        sw_links = {}
+        sw.sort()
+        for s in sw:
+            self.add_node(Switch(s, p4info_helper, bmv2_file_path))
+            sw_links[s] = []
+
+        ht = [str(h) for h in js["hosts"]]
+        for h in ht:
+            self.add_node(Host(h, self.build_host_ip(h)))
+
+        lk = [[str(l[0]), str(l[1])] for l in js["links"]]
+
+        for (e1, e2) in lk:
+            if e1[0] == 's':
+                sw_links[e1].append(e2)
+            if e2[0] == 's':
+                sw_links[e2].append(e1)
+
+        for sl in sw_links:
+            sw_links[sl].sort()
+            port = 1
+            for n in sw_links[sl]:
+                self.add_link(sl, n, port)
+                port += 1
+
+
+        file.close()
+        self.fill_switch_tables()
+
 
     def add_node(self, node):
         self.nodes[node.name] = node
@@ -321,7 +360,6 @@ class Topology:
             next_hops = self.get_next_hop_for_all_sw(switches[s1].name)
             for s2 in range(len(switches)):
                 if s1!=s2 and not self.has_link(switches[s1].name, switches[s2].name):
-                    print ("Not found link between " + switches[s1].name + " and " + switches[s2].name)
                     switches[s1].add_rule(self.adjust_rule(next_hops[switches[s2].name], switches[s2]))
 
 
@@ -350,159 +388,11 @@ def main(p4info_file_path, bmv2_file_path):
 
 
         RULES_DIR = RULES_DIR + '/'
-        s01 = Switch('s01', p4info_helper, bmv2_file_path)
-        s02 = Switch('s02', p4info_helper, bmv2_file_path)
-        s03 = Switch('s03', p4info_helper, bmv2_file_path)
-        s04 = Switch('s04', p4info_helper, bmv2_file_path)
-        s05 = Switch('s05', p4info_helper, bmv2_file_path)
-        s06 = Switch('s06', p4info_helper, bmv2_file_path)
-        s07 = Switch('s07', p4info_helper, bmv2_file_path)
-        s08 = Switch('s08', p4info_helper, bmv2_file_path)
-        s09 = Switch('s09', p4info_helper, bmv2_file_path)
-        s10 = Switch('s10', p4info_helper, bmv2_file_path)
-        s11 = Switch('s11', p4info_helper, bmv2_file_path)
-        s12 = Switch('s12', p4info_helper, bmv2_file_path)
-        s13 = Switch('s13', p4info_helper, bmv2_file_path)
-
-
-        switches = [s01, s02, s03, s04, s05, s06, s07, s08, s09, s10, s11, s12, s13]
-
-
-        h011 = Host('h011', '10.0.1.11')
-        h012 = Host('h012', '10.0.1.12')
-        h013 = Host('h013', '10.0.1.13')
-        h021 = Host('h021', '10.0.2.21')
-        h022 = Host('h022', '10.0.2.22')
-        h031 = Host('h031', '10.0.3.31')
-        h041 = Host('h041', '10.0.4.41')
-        h042 = Host('h042', '10.0.4.42')
-        h061 = Host('h061', '10.0.6.61')
-        h070 = Host('h070', '10.0.7.70')
-        h071 = Host('h071', '10.0.7.71')
-        h081 = Host('h081', '10.0.8.81')
-        h082 = Host('h082', '10.0.8.82')
-        h083 = Host('h083', '10.0.8.83')
-        h084 = Host('h084', '10.0.8.84')
-        h085 = Host('h085', '10.0.8.85')
-        h086 = Host('h086', '10.0.8.86')
-        h111 = Host('h111', '10.0.11.111')
-        h112 = Host('h112', '10.0.11.112')
-        h121 = Host('h121', '10.0.12.121')
-        h122 = Host('h122', '10.0.12.122')
-        h123 = Host('h123', '10.0.12.123')
-        h131 = Host('h131', '10.0.13.131')
         
-        topo = Topology()
-        topo.add_node(s01)
-        topo.add_node(s02)
-        topo.add_node(s03)
-        topo.add_node(s04)
-        topo.add_node(s05)
-        topo.add_node(s06)
-        topo.add_node(s07)
-        topo.add_node(s08)
-        topo.add_node(s09)
-        topo.add_node(s10)
-        topo.add_node(s11)
-        topo.add_node(s12)
-        topo.add_node(s13)
         
-        topo.add_node(h011)
-        topo.add_node(h012)
-        topo.add_node(h013)
-        topo.add_node(h021)
-        topo.add_node(h022)
-        topo.add_node(h031)
-        topo.add_node(h041)
-        topo.add_node(h042)
-        topo.add_node(h061)
-        topo.add_node(h070)
-        topo.add_node(h071)
-        topo.add_node(h081)
-        topo.add_node(h082)
-        topo.add_node(h083)
-        topo.add_node(h084)
-        topo.add_node(h085)
-        topo.add_node(h086)
-        topo.add_node(h111)
-        topo.add_node(h112)
-        topo.add_node(h121)
-        topo.add_node(h122)
-        topo.add_node(h123)
-        topo.add_node(h131)
+        topo = Topology('topology.json', p4info_helper, bmv2_file_path)
         
-
-        # PHASE 2: INSTALL IPv4 FORWARDING RULES ON THE SWITCHES
         
-        topo.add_link('s01', 'h011', 1)
-        topo.add_link('s01', 'h012', 2)
-        topo.add_link('s01', 'h013', 3)
-        topo.add_link('s01', 's02', 4)
-        topo.add_link('s01', 's03', 5)
-
-        topo.add_link('s02', 'h021', 1)
-        topo.add_link('s02', 'h022', 2)
-        topo.add_link('s02', 's01', 3)
-        topo.add_link('s02', 's03', 4)
-        
-        topo.add_link('s03', 'h031', 1)
-        topo.add_link('s03', 's01', 2)
-        topo.add_link('s03', 's02', 3)
-        topo.add_link('s03', 's04', 4)
-        
-        topo.add_link('s04', 'h041', 1)
-        topo.add_link('s04', 'h042', 2)
-        topo.add_link('s04', 's05', 3)
-        
-        topo.add_link('s05', 's03', 1)
-        topo.add_link('s05', 's04', 2)
-        topo.add_link('s05', 's06', 3)
-        topo.add_link('s05', 's07', 4)
-        
-        topo.add_link('s06', 'h061', 1)
-        topo.add_link('s06', 's05', 2)
-        topo.add_link('s06', 's08', 3)
-        
-        topo.add_link('s07', 'h070', 1)
-        topo.add_link('s07', 'h071', 2)
-        topo.add_link('s07', 's05', 3)
-        topo.add_link('s07', 's09', 4)
-        
-        topo.add_link('s08', 'h081', 1)
-        topo.add_link('s08', 'h082', 2)
-        topo.add_link('s08', 'h083', 3)
-        topo.add_link('s08', 'h084', 4)
-        topo.add_link('s08', 'h085', 5)
-        topo.add_link('s08', 'h086', 6)
-        topo.add_link('s08', 's06', 7)
-        topo.add_link('s08', 's09', 8)
-        
-        topo.add_link('s09', 's07', 1)
-        topo.add_link('s09', 's08', 2)
-        topo.add_link('s09', 's10', 3)
-        topo.add_link('s09', 's11', 4)
-        
-        topo.add_link('s10', 's09', 1)
-        topo.add_link('s10', 's12', 2)
-        topo.add_link('s10', 's13', 3)
-        
-        topo.add_link('s11', 'h111', 1)
-        topo.add_link('s11', 'h112', 2)
-        topo.add_link('s11', 's09', 3)
-        topo.add_link('s11', 's13', 4)
-        
-        topo.add_link('s12', 'h121', 1)
-        topo.add_link('s12', 'h122', 2)
-        topo.add_link('s12', 'h123', 3)
-        topo.add_link('s12', 's10', 4)
-        
-        topo.add_link('s13', 'h131', 1)
-        topo.add_link('s13', 's10', 2)
-        topo.add_link('s13', 's11', 3)
-        
-
-        topo.fill_switch_tables()
-
         ## THE END
         print 'THE END.'
     except KeyboardInterrupt:
