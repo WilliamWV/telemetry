@@ -136,8 +136,8 @@ class Switch:
     self.rules = {} # {rule id     -> Rule class instance}
     self.last_congestion_print = -1
     self.init_rules()
-    self.alpha = 0.1 # usado para estimar o delay e a ocupacao da fila, 
-                     # quanto maior mais valoriza a experiencia imediata  
+    self.alpha = 0.1 # used to estimate the current delay and the current queue
+                     # occupation. 
 
   def init_rules(self):
     global RULES_DIR

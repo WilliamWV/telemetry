@@ -213,7 +213,7 @@ class Switch(Node):
 ###    - self.nodes         // dictionary {node_name -> node}               ###
 ###    - self.links         // list of tuples (src, dst, fw_rule)           ###
 ###  * Methods:                                                             ###
-###    - __init__ ()                                                        ###
+###    - __init__ (file, p4info_helper, bmv2_file_path)                     ###
 ###    - add_node (node)                                                    ###
 ###    - make_rule (n1, n2, port)                                           ###
 ###    - has_link (node1, node2)                                            ###
@@ -221,6 +221,8 @@ class Switch(Node):
 ###    - get_next_hop_for_all_sw(sw)                                        ###
 ###    - adjust_rule(rule, sw)                                              ###
 ###    - fill_switch_tables()                                               ###
+###    - build_host_ip(host)                                                ###
+###    - build_topo(file, p4info_helper, bmv2_file_path)                    ###
 ###############################################################################
 class Topology:
     # represents topology nodes
@@ -233,6 +235,7 @@ class Topology:
     def build_host_ip(self, host):
         return '10.0.%d.%d' % (int(host[1:(len(host)-1)]) , int(host[1:]))
 
+    # Construction of the topology
     def build_topo(self, file, p4info_helper, bmv2_file_path):
         js = json.load(file)
         

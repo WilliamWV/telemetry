@@ -58,11 +58,11 @@ header mri_t {
 }
 
 header switch_t {
-    uint_16 swid;           //id do distpositivo
-    uint_32 qdepth;         //tamanho da fila
-    uint_32 timestamp;      //timestamp -> ingresso na fila 
-    uint_32 timedelta;      //delay do salto
-    uint_16 rule_id;        //regra de encaminhamento
+    uint_16 swid;           //switch id
+    uint_32 qdepth;         //queue size
+    uint_32 timestamp;      //timestamp 
+    uint_32 timedelta;      //hop delay
+    uint_16 rule_id;        //forwarding rule
 }
 
 struct ingress_metadata_t {
@@ -86,18 +86,15 @@ struct headers {
     
 }
 
-/*
-    The original idea was to make this structure as?
-    struct telemetry_meta_t{
-        mri_t              mri;
-        switch_t[MAX_HOPS] swtraces;
-    }
-    but the compiler was throwing bugs like nested struct and nested stack
-    so the following is used
-*/
 struct telemetry_meta_t{
 
     bit<16>   count;       
+
+    // The huge number of metadata to store the traces that follow
+    // is caused by the fact that bmv2 model does not accepts 
+    // conditional execution of commands like setValid() or
+    // setInvalid(), so all the trace headers may be invalidated
+    // so all its data may be copied
 
     uint_16   swid0;           
     uint_32   qdepth0;         
@@ -291,10 +288,6 @@ control MyEgress(inout headers hdr,
         hdr.mri.count = hdr.mri.count + 1;
         hdr.mri.toParse = hdr.mri.toParse + 1;
         hdr.swtraces.push_front(1);
-        // According to the P4_16 spec, pushed elements are invalid, so we need
-        // to call setValid(). Older bmv2 versions would mark the new header(s)
-        // valid automatically (P4_14 behavior), but starting with version 1.11,
-        // bmv2 conforms with the P4_16 spec.
         hdr.swtraces[0].setValid();
         hdr.swtraces[0].swid = swid;
         hdr.swtraces[0].qdepth = (uint_32)standard_metadata.deq_qdepth;
@@ -316,7 +309,6 @@ control MyEgress(inout headers hdr,
     
     action invalidate_telemetry_headers(){
         
-        // Ipv4_options and mri invalidation
         hdr.mri.setInvalid();
         hdr.ethernet.etherType = TYPE_IPV4;
     
