@@ -10,3 +10,7 @@ To install mirroring rules on switch tables follow the commands on file "command
 The code is based on the MRI excercise from p4lang repository:
 
 `https://github.com/p4lang/tutorials/tree/master/exercises/mri`
+
+This project was originally developed at:
+
+https://gitlab.com/wwvargas/telemetry
